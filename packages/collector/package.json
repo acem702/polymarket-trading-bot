@@ -1,0 +1,21 @@
+{
+  "name": "@pmt/collector",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@pmt/shared": "1.0.0",
+    "commander": "^13.1.0",
+    "ts-bn-lint": "5.8.0",
+    "pino": "^9.6.0",
+    "ws": "^8.18.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.21",
+    "@types/ws": "^8.18.1"
+  }
+}

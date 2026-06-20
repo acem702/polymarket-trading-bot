@@ -1,0 +1,2162 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PolyPulse</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg:            #eef3fc;
+      --panel:         #ffffff;
+      --panel-2:       #e8f0fe;
+      --panel-3:       #dbeafe;
+      --border:        rgba(37, 99, 235, 0.10);
+      --border-strong: rgba(37, 99, 235, 0.18);
+      --text:          #0f172a;
+      --muted:         #5b6b8a;
+      --subtle:        #8fa3c4;
+      --accent:        #2563eb;
+      --accent-hover:  #1d4ed8;
+      --accent-soft:   rgba(37, 99, 235, 0.12);
+      --accent-ring:   rgba(37, 99, 235, 0.40);
+      --accent-muted:  #3b82f6;
+      --green:         #16a34a;
+      --green-soft:    rgba(22, 163, 74, 0.12);
+      --red:           #dc2626;
+      --red-soft:      rgba(220, 38, 38, 0.10);
+      --binance:       #b45309;
+      --chainlink:     #2563eb;
+      --ptb:           #4f46e5;
+      --spread:        #2563eb;
+      --up:            var(--accent);
+      --down:          var(--red);
+      --primary:       #2563eb;
+      --primary-hover: #1d4ed8;
+      --primary-soft:  rgba(37, 99, 235, 0.14);
+      --danger:        #dc2626;
+      --danger-hover:  #b91c1c;
+      --hover-bg:      rgba(37, 99, 235, 0.06);
+      --chart-bg:      #ffffff;
+      --chart-grid:    #e8f0fe;
+      --chart-border:  #bfdbfe;
+      --ob-ask-fill:   rgba(220, 38, 38, 0.10);
+      --ob-bid-fill:   rgba(37, 99, 235, 0.12);
+      --radius-sm:     6px;
+      --radius-md:     8px;
+      --radius-lg:     10px;
+      --shadow-inset:  inset 0 1px 0 rgba(255, 255, 255, 0.9);
+      --shadow-sm:     0 1px 2px rgba(15, 23, 42, 0.05);
+      --shadow-md:     0 1px 3px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      background: var(--bg);
+      background-image:
+        radial-gradient(ellipse 70% 45% at 50% -15%, rgba(37, 99, 235, 0.12), transparent),
+        linear-gradient(180deg, #f8fbff 0%, var(--bg) 100%);
+      color: var(--text);
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      display: grid; grid-template-rows: auto auto 1fr;
+      height: 100vh; overflow: hidden;
+      font-size: 13px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Sticky header ───────────────────────────────────────────────── */
+    header.top {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border-strong);
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(10px);
+      display: flex; align-items: center; gap: 12px;
+      flex-wrap: wrap; position: sticky; top: 0; z-index: 10;
+      box-shadow: var(--shadow-sm);
+    }
+    header.top h1 {
+      margin: 0; font-size: 14px; font-weight: 600; letter-spacing: -0.01em;
+      white-space: nowrap; color: var(--accent);
+    }
+
+    .selector-group {
+      display: flex; gap: 2px; padding: 3px;
+      background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-md);
+    }
+    .selector-btn {
+      padding: 4px 10px; border-radius: var(--radius-sm); border: none;
+      background: transparent; color: var(--muted); cursor: pointer;
+      font-size: 12px; font-weight: 500; transition: background 0.15s, color 0.15s;
+      font-family: inherit;
+    }
+    .selector-btn:hover { color: var(--text); background: var(--hover-bg); }
+    .selector-btn.active {
+      background: var(--accent); color: #fff;
+      box-shadow: 0 1px 2px rgba(37, 99, 235, 0.25);
+    }
+    .selector-btn.unavailable { opacity: 0.35; cursor: not-allowed; }
+
+    .status {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 3px 10px; border-radius: 999px;
+      background: var(--panel-2); border: 1px solid var(--border);
+      font-size: 11px; color: var(--muted);
+    }
+    .status .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--subtle); }
+    .status.ok  .dot { background: var(--accent); box-shadow: 0 0 6px rgba(37, 99, 235, 0.35); }
+    .status.bad .dot { background: var(--red);   box-shadow: 0 0 6px rgba(220, 38, 38, 0.35); }
+
+    .hdr-stats { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+    .hdr-stat {
+      background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md);
+      padding: 4px 11px; min-width: 105px;
+      display: flex; flex-direction: column; gap: 1px;
+      box-shadow: var(--shadow-sm);
+    }
+    .hdr-stat .lbl { font-size: 9px; color: var(--muted); letter-spacing: 0.5px; text-transform: uppercase; font-weight: 600; }
+    .hdr-stat .val { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text); }
+    .hdr-stat .val.muted { color: var(--muted); }
+    .hdr-stat .val.up   { color: var(--green); }
+    .hdr-stat .val.down { color: var(--red); }
+    .hdr-stat.binance   .lbl { color: var(--binance); }
+    .hdr-stat.chainlink .lbl { color: var(--chainlink); }
+    .hdr-stat .lbl.spread-lbl { color: var(--spread); }
+    .hdr-stat .pair { display: flex; gap: 6px; align-items: baseline; }
+    .hdr-stat .pair .bid { color: var(--accent); font-size: 13px; font-variant-numeric: tabular-nums; font-weight: 600; }
+    .hdr-stat .pair .ask { color: var(--red);   font-size: 13px; font-variant-numeric: tabular-nums; font-weight: 600; }
+    .hdr-stat .pair .sep { color: var(--muted); font-size: 11px; }
+
+    /* ── Slug selection bar ──────────────────────────────────────────── */
+    .slug-bar {
+      display: flex; align-items: center; gap: 12px;
+      padding: 8px 16px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .market-picker {
+      display: inline-flex; align-items: center; gap: 8px;
+      flex: 1; min-width: 0;
+    }
+    .market-picker .picker-lbl {
+      color: var(--muted); letter-spacing: 0.4px; text-transform: uppercase;
+      font-size: 9px; font-weight: 600; white-space: nowrap;
+    }
+    .market-picker select {
+      flex: 1; min-width: 0; max-width: 720px;
+      background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+      padding: 6px 28px 6px 10px; border-radius: var(--radius-sm); font: inherit; font-size: 11px;
+      font-variant-numeric: tabular-nums; cursor: pointer;
+      appearance: none; -webkit-appearance: none;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8' fill='%2364748b'><path d='M6 8 0 0h12z'/></svg>");
+      background-repeat: no-repeat; background-position: right 10px center; background-size: 7px;
+      transition: border-color 0.15s;
+    }
+    .market-picker select:hover { border-color: var(--border-strong); }
+    .market-picker select:focus { outline: none; border-color: var(--accent-ring); box-shadow: 0 0 0 2px var(--accent-soft); }
+    .market-picker select option { background: var(--panel-2); color: var(--text); }
+    .market-picker input[type="date"] {
+      background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+      padding: 5px 10px; border-radius: var(--radius-sm); font: inherit; font-size: 11px;
+      font-variant-numeric: tabular-nums; cursor: pointer; min-width: 130px;
+      transition: border-color 0.15s;
+    }
+    .market-picker input[type="date"]:hover { border-color: var(--border-strong); }
+    .market-picker input[type="date"]:focus { outline: none; border-color: var(--accent-ring); box-shadow: 0 0 0 2px var(--accent-soft); }
+    .date-picker { flex: 0 0 auto; max-width: none; }
+
+    .live-badge {
+      font-size: 9px; padding: 3px 8px; border-radius: 999px;
+      background: var(--danger); color: #fff; font-weight: 700; letter-spacing: 0.4px;
+    }
+    .ghost-btn {
+      background: transparent; color: var(--muted);
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+      padding: 5px 12px; font: inherit; font-size: 11px; cursor: pointer;
+      white-space: nowrap; transition: color 0.15s, border-color 0.15s, background 0.15s;
+    }
+    .ghost-btn:hover { color: var(--text); border-color: var(--border-strong); background: var(--hover-bg); }
+    .ghost-btn[hidden] { display: none; }
+    .slug-meta { font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+    /* ── Three-column main: order book | charts | strategies ───────── */
+    main {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      overflow: hidden; height: 100%; min-height: 0;
+    }
+
+    /* LEFT: order book */
+    .left-col {
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      overflow-y: auto; min-height: 0;
+      background: var(--bg);
+    }
+    .ob-header {
+      padding: 10px 14px; background: linear-gradient(135deg, #eff6ff 0%, #f8fbff 100%);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .ob-header .h-title { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; color: var(--accent); }
+    .ob-header .h-slug  { font-size: 10px; color: var(--muted);
+      font-variant-numeric: tabular-nums; word-break: break-all; margin-top: 3px; }
+
+    .ob-block { padding: 8px 0 14px; border-bottom: 1px solid var(--border); }
+    .ob-block-title {
+      font-size: 11px; font-weight: 600; letter-spacing: 0.4px;
+      padding: 0 14px 6px; display: flex; align-items: center; gap: 8px;
+    }
+    .ob-block-title .badge {
+      font-size: 9px; padding: 1px 6px; border-radius: 999px; font-weight: 600;
+    }
+    .ob-block.yes .ob-block-title { color: var(--accent); }
+    .ob-block.yes .badge { background: var(--primary-soft); color: var(--accent); }
+    .ob-block.no  .ob-block-title { color: var(--red); }
+    .ob-block.no  .badge { background: var(--red-soft); color: var(--red); }
+    .ob-block-title .mid { margin-left: auto; color: var(--muted); font-size: 10px;
+      font-weight: 600; font-variant-numeric: tabular-nums; }
+
+    .ob-table { width: 100%; font-variant-numeric: tabular-nums; font-size: 12px; }
+    .ob-table .row {
+      display: grid; grid-template-columns: 1fr 1fr 1fr;
+      padding: 1.5px 14px; gap: 12px; position: relative;
+      transition: background 0.1s;
+    }
+    .ob-table .row:hover { background: var(--hover-bg); }
+    .ob-table .row .price { font-weight: 600; }
+    .ob-table .row .size  { text-align: right; color: var(--text); }
+    .ob-table .row .total { text-align: right; color: var(--muted); }
+    .ob-table .row.ask .price { color: var(--red); }
+    .ob-table .row.bid .price { color: var(--accent); }
+    .ob-table .header-row {
+      display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;
+      padding: 4px 14px; color: var(--muted);
+      font-size: 9px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;
+    }
+    .ob-table .header-row .right { text-align: right; }
+    .ob-spread {
+      padding: 5px 14px; background: var(--panel);
+      border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+      font-size: 10px; color: var(--muted);
+      display: flex; justify-content: space-between;
+      font-variant-numeric: tabular-nums;
+    }
+    .ob-spread .spread-val { color: var(--text); font-weight: 600; }
+    .ob-empty { padding: 10px 14px; color: var(--muted); font-size: 11px; font-style: italic; }
+
+    /* ── Strategies column (right 1/3) ───────────────────────────────── */
+    .strategies-section {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      height: 100%;
+      overflow: hidden;
+      background: linear-gradient(180deg, #f5f9ff 0%, var(--panel) 100%);
+      border-left: 1px solid var(--border-strong);
+    }
+    .strategies-toolbar {
+      display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap;
+      padding: 10px 12px;
+      background: linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%);
+      border-bottom: 1px solid var(--border-strong);
+      flex-shrink: 0;
+    }
+    .strategies-toolbar h2 {
+      margin: 0; font-size: 12px; font-weight: 600; white-space: nowrap;
+      letter-spacing: -0.01em; color: var(--accent);
+    }
+    .strategies-toolbar .ctx {
+      font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums;
+    }
+    .strategies-toolbar .date-fields {
+      display: flex; gap: 8px; align-items: center; flex-wrap: wrap; width: 100%;
+    }
+    .strategies-toolbar label {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 9px; color: var(--muted); text-transform: uppercase;
+      letter-spacing: 0.4px; font-weight: 600;
+    }
+    .strategies-toolbar input[type="date"] {
+      background: var(--panel); border: 1px solid var(--border); color: var(--text);
+      padding: 5px 8px; border-radius: var(--radius-sm); font: inherit; font-size: 11px;
+    }
+    .strategies-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 10px 12px 12px;
+      overflow-y: auto;
+      flex: 1;
+      min-height: 0;
+    }
+    .strategies-toolbar .toolbar-row {
+      display: flex; flex-direction: column; gap: 8px; width: 100%;
+    }
+    .strat-select-group {
+      display: flex; gap: 2px; padding: 3px;
+      background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md);
+      width: 100%;
+    }
+    .strat-select-btn {
+      flex: 1; padding: 5px 6px; border-radius: var(--radius-sm); border: none;
+      background: transparent; color: var(--muted); cursor: pointer;
+      font: inherit; font-size: 10px; font-weight: 500; text-align: center;
+      transition: background 0.15s, color 0.15s;
+    }
+    .strat-select-btn:hover { color: var(--text); background: var(--hover-bg); }
+    .strat-select-btn.active {
+      background: var(--accent); color: #fff;
+      box-shadow: 0 1px 2px rgba(37, 99, 235, 0.22);
+    }
+    .strat-card { display: none; flex: 1; min-height: 0; }
+    .strat-card.active {
+      display: flex;
+      background: var(--panel); border: 1px solid var(--border-strong);
+      border-radius: var(--radius-lg); flex-direction: column;
+      min-width: 0; box-shadow: 0 2px 8px rgba(37, 99, 235, 0.10);
+    }
+    .strat-card-head {
+      padding: 10px 12px; border-bottom: 1px solid var(--border);
+      background: linear-gradient(135deg, #eff6ff 0%, #ffffff 100%);
+    }
+    .strat-card-head .name { font-size: 12px; font-weight: 600; letter-spacing: -0.01em; color: var(--accent); }
+    .strat-card-head .desc { font-size: 10px; color: var(--muted); margin-top: 4px; line-height: 1.35; }
+    .strat-card-body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+    .strat-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .strat-field { display: flex; flex-direction: column; gap: 3px; }
+    .strat-field.full { grid-column: 1 / -1; }
+    .strat-field label {
+      font-size: 9px; color: var(--muted); text-transform: uppercase;
+      letter-spacing: 0.4px; font-weight: 600;
+    }
+    .strat-field input {
+      background: var(--panel); border: 1px solid var(--border); color: var(--text);
+      padding: 5px 8px; border-radius: var(--radius-sm); font: inherit; font-size: 11px;
+      font-variant-numeric: tabular-nums; transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .strat-field input:focus { outline: none; border-color: var(--accent-ring); box-shadow: 0 0 0 2px var(--accent-soft); }
+    .strat-run {
+      background: var(--primary); color: #fff; border: none; border-radius: var(--radius-sm);
+      padding: 7px 12px; font: inherit; font-size: 11px; font-weight: 600; cursor: pointer;
+      flex: 1; transition: background 0.15s, box-shadow 0.15s;
+      box-shadow: 0 1px 2px rgba(37, 99, 235, 0.25);
+    }
+    .strat-run:hover { background: var(--primary-hover); box-shadow: 0 2px 4px rgba(37, 99, 235, 0.30); }
+    .strat-run:disabled { opacity: 0.5; cursor: not-allowed; }
+    .strat-live-btn {
+      background: transparent; color: var(--accent); border: 1px solid var(--accent-ring);
+      border-radius: var(--radius-sm); padding: 7px 12px; font: inherit; font-size: 11px;
+      font-weight: 600; cursor: pointer; flex: 1; transition: background 0.15s, border-color 0.15s;
+    }
+    .strat-live-btn:hover { background: var(--accent-soft); }
+    .strat-live-btn.active {
+      background: var(--danger); border-color: var(--danger); color: #fff;
+    }
+    .strat-live-btn.active:hover { background: var(--danger-hover); border-color: var(--danger-hover); }
+    .strat-live-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .strat-actions { display: flex; gap: 6px; }
+    .strat-live-panel {
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+      background: var(--panel); padding: 6px 8px; font-size: 10px;
+    }
+    .strat-live-panel[hidden] { display: none; }
+    .strat-live-panel .live-badge {
+      display: inline-block; font-size: 8px; font-weight: 700;
+      padding: 2px 6px; border-radius: 999px; margin-bottom: 4px;
+      background: var(--primary-soft); color: var(--accent);
+    }
+    .strat-live-panel .live-badge.off {
+      background: rgba(100, 116, 139, 0.12); color: var(--muted);
+    }
+    .strat-live-panel .live-msg { color: var(--muted); margin-bottom: 4px; word-break: break-word; }
+    .strat-live-signals { max-height: 100px; overflow-y: auto; color: var(--text); }
+    .strat-live-signals .sig { padding: 2px 0; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+    .strat-live-signals .sig:last-child { border-bottom: none; }
+
+    .live-history-section {
+      margin-top: 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--panel);
+      overflow: hidden;
+    }
+    .live-history-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .live-history-head h3 {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .live-history-table-wrap {
+      max-height: 220px;
+      overflow: auto;
+    }
+    .live-history-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+    }
+    .live-history-table th,
+    .live-history-table td {
+      padding: 6px 8px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    .live-history-table th {
+      position: sticky;
+      top: 0;
+      background: var(--panel);
+      color: var(--muted);
+      font-weight: 500;
+      z-index: 1;
+    }
+    .live-history-table tr:last-child td { border-bottom: none; }
+    .live-history-table .side-yes { color: var(--up); }
+    .live-history-table .side-no { color: var(--down); }
+    .live-history-table .st-ok { color: var(--green); }
+    .live-history-table .st-err { color: var(--danger); }
+    .live-history-table .st-paper { color: var(--muted); }
+    .live-history-table .oid {
+      max-width: 88px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .live-history-empty {
+      padding: 16px 12px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .strat-status { font-size: 10px; color: var(--muted); min-height: 14px; }
+    .strat-status.err { color: var(--red); }
+    .strat-summary {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px;
+    }
+    .strat-stat {
+      background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm);
+      padding: 5px 6px; display: flex; flex-direction: column; gap: 2px;
+    }
+    .strat-stat .lbl { font-size: 8px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; font-weight: 600; }
+    .strat-stat .val { font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .strat-stat .val.pos { color: var(--green); }
+    .strat-stat .val.neg { color: var(--red); }
+    .strat-results {
+      max-height: 200px; overflow: auto; border: 1px solid var(--border);
+      border-radius: var(--radius-sm); font-size: 9px; font-variant-numeric: tabular-nums;
+      background: var(--panel);
+    }
+    .strat-results table { width: 100%; border-collapse: collapse; }
+    .strat-results th, .strat-results td {
+      padding: 3px 5px; border-bottom: 1px solid var(--border); text-align: left;
+    }
+    .strat-results th {
+      position: sticky; top: 0; background: var(--panel-2);
+      color: var(--muted); font-size: 8px; text-transform: uppercase;
+    }
+    .strat-results tr:last-child td { border-bottom: none; }
+    .strat-results .win { color: var(--green); }
+    .strat-results .loss { color: var(--red); }
+
+    /* ── Charts column (center 1/3) ──────────────────────────────────── */
+    .charts-col {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      height: 100%;
+      overflow: hidden;
+      border-right: 1px solid var(--border);
+      background: var(--bg);
+    }
+    .chart-panel {
+      background: var(--panel);
+      display: flex; flex-direction: column;
+      flex: 1 1 50%; min-height: 0; min-width: 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .chart-panel:last-child { border-bottom: none; }
+    .chart-bar {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 14px; background: linear-gradient(135deg, #eff6ff 0%, #f8fbff 100%);
+      border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    .chart-bar .cb-title { font-size: 12px; font-weight: 600; letter-spacing: -0.01em; color: var(--accent); }
+    .chart-bar .cb-period { font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .chart-bar .legend { display: flex; gap: 6px; margin-left: auto; font-size: 9px; flex-wrap: wrap; justify-content: flex-end; }
+    .chart-bar .legend span { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); }
+    .chart-bar .legend span::before {
+      content: ""; display: inline-block; width: 12px; height: 2px;
+    }
+    .chart-bar .legend .b::before  { background: var(--binance); }
+    .chart-bar .legend .l::before  { background: var(--chainlink); }
+    .chart-bar .legend .pb::before { background: var(--binance); height: 0; border-top: 2px dashed var(--binance); }
+    .chart-bar .legend .pcl::before { background: var(--chainlink); height: 0; border-top: 2px dashed var(--chainlink); }
+    .chart-bar .legend .d::before  { background: var(--spread); }
+    .chart-bar .legend .y::before  { background: var(--up); }
+    .chart-bar .legend .n::before  { background: var(--down); }
+
+    .chart-host {
+      position: relative; flex: 1 1 auto; min-height: 0;
+    }
+    .chart-host > div { position: absolute; inset: 0; }
+
+    /* ── Responsive ─────────────────────────────────────────────────── */
+    @media (max-width: 1100px) {
+      main { grid-template-columns: 1fr; grid-template-rows: auto auto auto; overflow-y: auto; }
+      .left-col { border-right: none; border-bottom: 1px solid var(--border); max-height: 40vh; }
+      .charts-col { border-right: none; border-bottom: 1px solid var(--border); min-height: 360px; }
+      .chart-panel { min-height: 180px; }
+      .strategies-section { border-left: none; max-height: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════ HEADER ═══════════════════════════ -->
+<header class="top">
+  <h1>PolyPulse</h1>
+
+  <div class="selector-group" id="coin-btns">
+    <button class="selector-btn active" data-coin="BTC">BTC</button>
+    <button class="selector-btn" data-coin="ETH">ETH</button>
+    <button class="selector-btn" data-coin="XRP">XRP</button>
+    <button class="selector-btn" data-coin="SOL">SOL</button>
+    <button class="selector-btn" data-coin="BNB">BNB</button>
+    <button class="selector-btn" data-coin="HYPE">HYPE</button>
+    <button class="selector-btn" data-coin="DOGE">DOGE</button>
+  </div>
+
+  <div class="selector-group" id="tf-btns">
+    <button class="selector-btn active" data-tf="5m">5min</button>
+    <button class="selector-btn" data-tf="15m">15min</button>
+    <button class="selector-btn" data-tf="1h">1hour</button>
+  </div>
+
+  <span id="status" class="status bad"><span class="dot"></span><span id="status-text">connecting…</span></span>
+
+  <div class="hdr-stat" style="min-width:130px">
+    <span class="lbl">Eastern</span>
+    <span class="val" id="px-clock-et">—</span>
+  </div>
+
+  <div class="hdr-stats">
+    <div class="hdr-stat binance">
+      <span class="lbl">Binance</span>
+      <span class="val" id="px-binance">—</span>
+    </div>
+    <div class="hdr-stat chainlink">
+      <span class="lbl">Chainlink</span>
+      <span class="val" id="px-chainlink">—</span>
+    </div>
+    <div class="hdr-stat binance">
+      <span class="lbl">PTB Bin</span>
+      <span class="val" id="px-ptb-bin">—</span>
+    </div>
+    <div class="hdr-stat chainlink">
+      <span class="lbl">PTB CL</span>
+      <span class="val" id="px-ptb-cl">—</span>
+    </div>
+    <div class="hdr-stat">
+      <span class="lbl spread-lbl">Bin−CL</span>
+      <span class="val" id="px-spread-bin-usd">—</span>
+    </div>
+    <div class="hdr-stat">
+      <span class="lbl" style="color:var(--accent)">YES bid / ask</span>
+      <span class="pair">
+        <span class="bid" id="px-yes-bid">—</span>
+        <span class="sep">/</span>
+        <span class="ask" id="px-yes-ask">—</span>
+      </span>
+    </div>
+    <div class="hdr-stat">
+      <span class="lbl" style="color:var(--red)">NO bid / ask</span>
+      <span class="pair">
+        <span class="bid" id="px-no-bid">—</span>
+        <span class="sep">/</span>
+        <span class="ask" id="px-no-ask">—</span>
+      </span>
+    </div>
+  </div>
+</header>
+
+<!-- ═══════════════════════════ SLUG SELECTOR ═══════════════════════════ -->
+<div class="slug-bar">
+  <label class="market-picker date-picker">
+    <span class="picker-lbl">Date (ET)</span>
+    <input type="date" id="slug-date" aria-label="Select Eastern date" />
+  </label>
+  <label class="market-picker">
+    <span class="picker-lbl">Market</span>
+    <select id="slug-select" aria-label="Select market window">
+      <option value="" disabled selected>Loading markets…</option>
+    </select>
+  </label>
+  <span id="slug-live-badge" class="live-badge" hidden>LIVE</span>
+  <span id="slug-meta" class="slug-meta"></span>
+  <button id="slug-live-btn" class="ghost-btn" type="button" hidden>Jump to LIVE</button>
+</div>
+
+<!-- ═══════════════════════════ MAIN ═══════════════════════════ -->
+<main>
+
+  <!-- LEFT: order book -->
+  <div class="left-col">
+    <div class="ob-header">
+      <div class="h-title" id="ob-h-title">BTC · 5min</div>
+      <div class="h-slug" id="ob-h-slug">—</div>
+    </div>
+
+    <div class="ob-block yes">
+      <div class="ob-block-title">
+        <span>YES Token</span>
+        <span class="badge">UP</span>
+        <span class="mid" id="yes-mid-label">mid —</span>
+      </div>
+      <div class="ob-table">
+        <div class="header-row">
+          <span>Price</span>
+          <span class="right">Size</span>
+          <span class="right">Total</span>
+        </div>
+        <div id="yes-asks-rows"></div>
+        <div class="ob-spread" id="yes-spread">
+          <span>spread</span>
+          <span class="spread-val">—</span>
+        </div>
+        <div id="yes-bids-rows"></div>
+      </div>
+    </div>
+
+    <div class="ob-block no">
+      <div class="ob-block-title">
+        <span>NO Token</span>
+        <span class="badge">DOWN</span>
+        <span class="mid" id="no-mid-label">mid —</span>
+      </div>
+      <div class="ob-table">
+        <div class="header-row">
+          <span>Price</span>
+          <span class="right">Size</span>
+          <span class="right">Total</span>
+        </div>
+        <div id="no-asks-rows"></div>
+        <div class="ob-spread" id="no-spread">
+          <span>spread</span>
+          <span class="spread-val">—</span>
+        </div>
+        <div id="no-bids-rows"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CENTER: price + YES/NO charts (1/3) -->
+  <div class="charts-col">
+    <div class="chart-panel">
+      <div class="chart-bar">
+        <span class="cb-title" id="price-title">BTC price</span>
+        <div class="legend">
+          <span class="b">Binance</span>
+          <span class="l">Chainlink</span>
+          <span class="pb">PTB Bin</span>
+          <span class="pcl">PTB CL</span>
+        </div>
+      </div>
+      <div class="chart-host"><div id="chart-price"></div></div>
+    </div>
+
+    <div class="chart-panel">
+      <div class="chart-bar">
+        <span class="cb-title">YES &amp; NO best ask</span>
+        <div class="legend">
+          <span class="y">YES</span>
+          <span class="n">NO</span>
+        </div>
+      </div>
+      <div class="chart-host"><div id="chart-yesno"></div></div>
+    </div>
+  </div>
+
+  <!-- RIGHT: strategies (1/3) -->
+  <section class="strategies-section" id="strategies-section">
+      <div class="strategies-toolbar">
+        <div class="toolbar-row">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <h2>Strategy</h2>
+            <span class="ctx" id="strat-ctx">BTC · 5min</span>
+          </div>
+          <div class="strat-select-group" id="strat-select-btns" role="tablist" aria-label="Select strategy">
+            <button type="button" class="strat-select-btn active" data-strat-select="dual_45c" role="tab" aria-selected="true">45c Dual</button>
+            <button type="button" class="strat-select-btn" data-strat-select="momentum_90c" role="tab" aria-selected="false">90c Momentum</button>
+            <button type="button" class="strat-select-btn" data-strat-select="ptb_deviation" role="tab" aria-selected="false">PTB Deviation</button>
+          </div>
+          <div class="date-fields">
+            <label>Start (ET)<input type="date" id="strat-start" /></label>
+            <label>End (ET)<input type="date" id="strat-end" /></label>
+          </div>
+        </div>
+      </div>
+      <div class="strategies-grid">
+
+        <div class="strat-card active" data-strat="dual_45c">
+          <div class="strat-card-head">
+            <div class="name">45c Dual</div>
+            <div class="desc">Limit BUY YES + NO @ 45c at each market open</div>
+          </div>
+          <div class="strat-card-body">
+            <div class="strat-fields">
+              <div class="strat-field">
+                <label>Shares</label>
+                <input type="number" data-param="shares" min="1" step="1" value="5" />
+              </div>
+              <div class="strat-field">
+                <label>Limit price</label>
+                <input type="number" data-param="limit_price" min="0.01" max="0.99" step="0.01" value="0.45" />
+              </div>
+            </div>
+            <div class="strat-actions">
+              <button type="button" class="strat-run" data-run="dual_45c">Backtest</button>
+              <button type="button" class="strat-live-btn" data-live="dual_45c">Live trading</button>
+            </div>
+            <div class="strat-status" data-status="dual_45c"></div>
+            <div class="strat-live-panel" data-live-panel="dual_45c" hidden>
+              <span class="live-badge off" data-live-badge="dual_45c">OFF</span>
+              <div class="live-msg" data-live-msg="dual_45c">—</div>
+              <div class="strat-live-signals" data-live-signals="dual_45c"></div>
+            </div>
+            <div class="strat-summary" data-summary="dual_45c" hidden>
+              <div class="strat-stat"><span class="lbl">Mkts</span><span class="val" data-k="markets">—</span></div>
+              <div class="strat-stat"><span class="lbl">Trades</span><span class="val" data-k="trades">—</span></div>
+              <div class="strat-stat"><span class="lbl">Win%</span><span class="val" data-k="winrate">—</span></div>
+              <div class="strat-stat"><span class="lbl">Wins</span><span class="val" data-k="wins">—</span></div>
+              <div class="strat-stat"><span class="lbl">Loss</span><span class="val" data-k="losses">—</span></div>
+              <div class="strat-stat"><span class="lbl">PnL</span><span class="val" data-k="pnl">—</span></div>
+            </div>
+            <div class="strat-results" data-results="dual_45c" hidden></div>
+          </div>
+        </div>
+
+        <div class="strat-card" data-strat="momentum_90c">
+          <div class="strat-card-head">
+            <div class="name">90c Momentum</div>
+            <div class="desc">Binance 3s momentum in last 3min → BUY @ 90c</div>
+          </div>
+          <div class="strat-card-body">
+            <div class="strat-fields">
+              <div class="strat-field">
+                <label>Shares</label>
+                <input type="number" data-param="shares" min="1" step="1" value="5" />
+              </div>
+              <div class="strat-field">
+                <label>Limit price</label>
+                <input type="number" data-param="limit_price" min="0.01" max="0.99" step="0.01" value="0.90" />
+              </div>
+              <div class="strat-field">
+                <label>Threshold ($)</label>
+                <input type="number" data-param="threshold_usd" min="0" step="any" value="20" />
+              </div>
+              <div class="strat-field">
+                <label>Window (s)</label>
+                <input type="number" data-param="window_secs" min="1" step="1" value="3" />
+              </div>
+              <div class="strat-field full">
+                <label>Signal tail (s)</label>
+                <input type="number" data-param="signal_tail_secs" min="1" step="1" value="180" />
+              </div>
+            </div>
+            <div class="strat-actions">
+              <button type="button" class="strat-run" data-run="momentum_90c">Backtest</button>
+              <button type="button" class="strat-live-btn" data-live="momentum_90c">Live trading</button>
+            </div>
+            <div class="strat-status" data-status="momentum_90c"></div>
+            <div class="strat-live-panel" data-live-panel="momentum_90c" hidden>
+              <span class="live-badge off" data-live-badge="momentum_90c">OFF</span>
+              <div class="live-msg" data-live-msg="momentum_90c">—</div>
+              <div class="strat-live-signals" data-live-signals="momentum_90c"></div>
+            </div>
+            <div class="strat-summary" data-summary="momentum_90c" hidden>
+              <div class="strat-stat"><span class="lbl">Mkts</span><span class="val" data-k="markets">—</span></div>
+              <div class="strat-stat"><span class="lbl">Trades</span><span class="val" data-k="trades">—</span></div>
+              <div class="strat-stat"><span class="lbl">Win%</span><span class="val" data-k="winrate">—</span></div>
+              <div class="strat-stat"><span class="lbl">Wins</span><span class="val" data-k="wins">—</span></div>
+              <div class="strat-stat"><span class="lbl">Loss</span><span class="val" data-k="losses">—</span></div>
+              <div class="strat-stat"><span class="lbl">PnL</span><span class="val" data-k="pnl">—</span></div>
+            </div>
+            <div class="strat-results" data-results="momentum_90c" hidden></div>
+          </div>
+        </div>
+
+        <div class="strat-card" data-strat="ptb_deviation">
+          <div class="strat-card-head">
+            <div class="name">PTB Deviation</div>
+            <div class="desc">Binance vs Chainlink PTB deviation in last 60s</div>
+          </div>
+          <div class="strat-card-body">
+            <div class="strat-fields">
+              <div class="strat-field">
+                <label>Shares</label>
+                <input type="number" data-param="shares" min="1" step="1" value="5" />
+              </div>
+              <div class="strat-field">
+                <label>Limit price</label>
+                <input type="number" data-param="limit_price" min="0.01" max="0.99" step="0.01" value="0.99" />
+              </div>
+              <div class="strat-field">
+                <label>Threshold ($)</label>
+                <input type="number" data-param="threshold_usd" min="0" step="any" value="145" />
+              </div>
+              <div class="strat-field">
+                <label>Signal window (s)</label>
+                <input type="number" data-param="signal_window_secs" min="1" step="1" value="60" />
+              </div>
+            </div>
+            <div class="strat-actions">
+              <button type="button" class="strat-run" data-run="ptb_deviation">Backtest</button>
+              <button type="button" class="strat-live-btn" data-live="ptb_deviation">Live trading</button>
+            </div>
+            <div class="strat-status" data-status="ptb_deviation"></div>
+            <div class="strat-live-panel" data-live-panel="ptb_deviation" hidden>
+              <span class="live-badge off" data-live-badge="ptb_deviation">OFF</span>
+              <div class="live-msg" data-live-msg="ptb_deviation">—</div>
+              <div class="strat-live-signals" data-live-signals="ptb_deviation"></div>
+            </div>
+            <div class="strat-summary" data-summary="ptb_deviation" hidden>
+              <div class="strat-stat"><span class="lbl">Mkts</span><span class="val" data-k="markets">—</span></div>
+              <div class="strat-stat"><span class="lbl">Trades</span><span class="val" data-k="trades">—</span></div>
+              <div class="strat-stat"><span class="lbl">Win%</span><span class="val" data-k="winrate">—</span></div>
+              <div class="strat-stat"><span class="lbl">Wins</span><span class="val" data-k="wins">—</span></div>
+              <div class="strat-stat"><span class="lbl">Loss</span><span class="val" data-k="losses">—</span></div>
+              <div class="strat-stat"><span class="lbl">PnL</span><span class="val" data-k="pnl">—</span></div>
+            </div>
+            <div class="strat-results" data-results="ptb_deviation" hidden></div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="live-history-section" id="live-history-section">
+        <div class="live-history-head">
+          <h3>Live trading history</h3>
+          <span class="ctx" id="live-history-ctx">BTC · 5min</span>
+        </div>
+        <div class="live-history-table-wrap">
+          <table class="live-history-table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Strategy</th>
+                <th>Side</th>
+                <th>Price</th>
+                <th>Shares</th>
+                <th>Order</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="live-history-body">
+              <tr><td colspan="7" class="live-history-empty">No live trades yet</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+</main>
+
+<script>
+"use strict";
+
+// ─────────────────────────────────────────────────────────
+//  State
+// ─────────────────────────────────────────────────────────
+let selectedCoin = 'BTC';
+let selectedTF   = '5m';
+let selectedSlug = '';          // empty → auto-pick current LIVE slug
+let selectedDate = '';          // YYYY-MM-DD Eastern
+let slugEntries  = [];          // from GET /api/slugs/:asset/:tf
+const TF_LABEL = { '5m': '5min', '15m': '15min', '1h': '1hour' };
+
+const elSlugDate    = document.getElementById('slug-date');
+const elSlugSelect  = document.getElementById('slug-select');
+const elSlugLiveBtn = document.getElementById('slug-live-btn');
+const elSlugBadge   = document.getElementById('slug-live-badge');
+const elSlugMeta    = document.getElementById('slug-meta');
+
+const TZ_ET = 'America/New_York';
+
+function todayEt() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: TZ_ET }).format(new Date());
+}
+
+function estPartsFromSec(sec, { hour12 = false } = {}) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: TZ_ET,
+    hour: hour12 ? 'numeric' : '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12,
+  }).formatToParts(new Date(sec * 1000));
+  const get = (type) => parts.find((p) => p.type === type)?.value ?? '00';
+  return {
+    h: get('hour'),
+    m: get('minute'),
+    s: get('second'),
+    dayPeriod: get('dayPeriod'),
+  };
+}
+
+function fmtClockEst(sec) {
+  if (!sec) return '—';
+  const { h, m, s, dayPeriod } = estPartsFromSec(sec, { hour12: true });
+  const ap = dayPeriod ? ` ${dayPeriod.toUpperCase()}` : '';
+  return `${h}:${m}:${s}${ap} ET`;
+}
+
+function fmtChartTimeEst(sec) {
+  const { h, m, s } = estPartsFromSec(sec, { hour12: false });
+  return `${h}:${m}:${s}`;
+}
+
+function tickEstClock() {
+  const el = document.getElementById('px-clock-et');
+  if (el) el.textContent = fmtClockEst(Math.floor(Date.now() / 1000));
+}
+
+function windowSecsForTf(tf) {
+  if (tf === '15m') return 900;
+  if (tf === '1h')  return 3600;
+  return 300;
+}
+
+function fmtSlugRange(entry) {
+  const p = entry.period_start;
+  if (!p) return entry.slug;
+  const w = windowSecsForTf(selectedTF);
+  return `${fmtClockEst(p)} – ${fmtClockEst(p + w)}`;
+}
+
+function activeSlug() {
+  if (selectedSlug) return selectedSlug;
+  const live = slugEntries.find(s => s.is_current);
+  return live?.slug || slugEntries[0]?.slug || '';
+}
+
+function marketKey(coin = selectedCoin, tf = selectedTF) {
+  return `${coin}_${tf}`;
+}
+
+function isViewingLive() {
+  const slug = activeSlug();
+  return !!slug && slugEntries.some(s => s.slug === slug && s.is_current);
+}
+
+const fmtUsd  = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtUsd4 = new Intl.NumberFormat('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+const fmtSize = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
+const fmtProbNum = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+function fmtProb(v) {
+  if (!v || v <= 0 || !Number.isFinite(v)) return '—';
+  return fmtProbNum.format(v);
+}
+
+function fmtPrice(v) {
+  if (!v || v === 0) return '—';
+  if (v > 100) return '$' + fmtUsd.format(v);
+  return '$' + fmtUsd4.format(v);
+}
+function fmtSpreadUsd(v) {
+  if (v == null || Number.isNaN(v)) return '—';
+  const sign = v > 0 ? '+' : '';
+  const abs = Math.abs(v);
+  if (abs > 100) return sign + '$' + fmtUsd.format(v);
+  return sign + '$' + fmtUsd4.format(v);
+}
+function fmtSpreadBps(v) {
+  if (v == null || Number.isNaN(v)) return '—';
+  const sign = v > 0 ? '+' : '';
+  return sign + v.toFixed(2) + ' bps';
+}
+function spreadBinClForCoin(f, coin) {
+  return f?.binance_chainlink_spread?.[coin] || null;
+}
+function updateSpreadHeader(f, coin) {
+  const binSp = spreadBinClForCoin(f, coin);
+  const setSpread = (id, sp) => {
+    const el = document.getElementById(id);
+    if (sp && sp.chainlink > 0) {
+      el.textContent = fmtSpreadUsd(sp.diff_usd);
+      el.classList.remove('muted');
+    } else {
+      el.textContent = '—';
+      el.classList.add('muted');
+    }
+  };
+  setSpread('px-spread-bin-usd', binSp);
+}
+
+// ─────────────────────────────────────────────────────────
+//  Lightweight-Charts setup (same module as polymarket-hft-rs-v4)
+// ─────────────────────────────────────────────────────────
+function themeColor(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+function chartTheme() {
+  const bg = themeColor("--chart-bg");
+  const muted = themeColor("--muted");
+  const border = themeColor("--chart-border");
+  const grid = themeColor("--chart-grid");
+  return {
+    bg, muted, border, grid,
+    binance: themeColor("--binance"),
+    chainlink: themeColor("--chainlink"),
+    green: themeColor("--green"),
+    red: themeColor("--red"),
+    accent: themeColor("--accent"),
+  };
+}
+
+const baseOpts = () => {
+  const t = chartTheme();
+  return {
+  layout: {
+    background: { type: "solid", color: t.bg },
+    textColor: t.muted, fontSize: 10,
+    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  },
+  grid: { vertLines: { color: t.grid }, horzLines: { color: t.grid } },
+  rightPriceScale: {
+    borderColor: t.border, autoScale: true,
+    scaleMargins: { top: 0.10, bottom: 0.10 },
+  },
+  timeScale: {
+    borderColor: t.border, timeVisible: true, secondsVisible: true,
+    rightOffset: 0, barSpacing: 3,
+    tickMarkFormatter: (t) => {
+      // Hide the closing boundary tick (e.g. 8:50:00 on a 8:45–8:50 market).
+      if (charts.windowTo > 0 && t >= charts.windowTo) return "";
+      return fmtChartTimeEst(t);
+    },
+  },
+  localization: {
+    timeFormatter: (t) => fmtChartTimeEst(t),
+  },
+  crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+  handleScroll: true, handleScale: true,
+};
+};
+
+// Collapse multiple ticks per second into a single point.
+// `key` is the field on each input point holding the value.
+function dedupePerSecond(pts, key = "p") {
+  const m = new Map();
+  for (const pt of pts) m.set(Math.floor(pt.t / 1000), pt[key]);
+  return [...m.entries()].sort((a, b) => a[0] - b[0]).map(([time, value]) => ({ time, value }));
+}
+
+const charts = {
+  price: null, yesno: null,
+  sBinance: null, sChainlink: null,
+  sYesAsk:  null, sNoAsk: null,
+  framePrice: null, frameYesno: null,
+  ptbLineBin: null, ptbLineCl: null,
+  ptbBinValue: 0, ptbClValue: 0,
+  windowFrom: 0, windowTo: 0,
+  lastRepinSec: 0,
+  last: { bin: 0, cl: 0, ya: 0, na: 0 },
+};
+
+function initCharts() {
+  const elPx = document.getElementById("chart-price");
+  const elPm = document.getElementById("chart-yesno");
+  const t = chartTheme();
+  const opts = baseOpts();
+
+  charts.price = LightweightCharts.createChart(elPx, {
+    ...opts,
+    localization: { ...opts.localization, priceFormatter: (v) => v.toFixed(2) },
+  });
+  charts.yesno = LightweightCharts.createChart(elPm, {
+    ...opts,
+    rightPriceScale: { ...opts.rightPriceScale, autoScale: true, minimumWidth: 50 },
+    localization: { ...opts.localization, priceFormatter: (v) => v.toFixed(3) },
+  });
+
+  const lc = { lineWidth: 2, title: "", priceLineVisible: false, lastValueVisible: true };
+  charts.sBinance   = charts.price.addLineSeries({ color: t.binance, ...lc });
+  charts.sChainlink = charts.price.addLineSeries({ color: t.chainlink, ...lc });
+
+  const pf = { type: "price", precision: 3, minMove: 0.001 };
+  charts.sYesAsk = charts.yesno.addLineSeries({
+    color: t.accent, priceFormat: pf, ...lc,
+  });
+  charts.sNoAsk  = charts.yesno.addLineSeries({
+    color: t.red, priceFormat: pf, ...lc,
+  });
+  // Optional reference line at $0.99 (saturation marker)
+  charts.sYesAsk.createPriceLine({
+    price: 0.99, color: t.muted, lineWidth: 1,
+    lineStyle: LightweightCharts.LineStyle.Dotted, axisLabelVisible: false, title: "",
+  });
+
+  const frameOpts = {
+    lineWidth: 1, color: "rgba(0,0,0,0)",
+    priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
+  };
+  charts.framePrice = charts.price.addLineSeries(frameOpts);
+  charts.frameYesno = charts.yesno.addLineSeries(frameOpts);
+
+  const resize = () => {
+    charts.price.applyOptions({ width: elPx.clientWidth, height: elPx.clientHeight });
+    charts.yesno.applyOptions({ width: elPm.clientWidth, height: elPm.clientHeight });
+    if (charts.windowFrom > 0) repinChartWindow(charts.lastRepinSec || charts.last.bin);
+  };
+  new ResizeObserver(resize).observe(elPx.parentElement);
+  new ResizeObserver(resize).observe(elPm.parentElement);
+  window.addEventListener("resize", resize);
+  requestAnimationFrame(resize);
+}
+
+function setPtbLines({ binance, chainlink }) {
+  if (charts.ptbLineBin) {
+    charts.sBinance.removePriceLine(charts.ptbLineBin);
+    charts.ptbLineBin = null;
+  }
+  if (charts.ptbLineCl) {
+    charts.sChainlink.removePriceLine(charts.ptbLineCl);
+    charts.ptbLineCl = null;
+  }
+  charts.ptbBinValue = 0;
+  charts.ptbClValue = 0;
+  if (binance > 0) {
+    const t = chartTheme();
+    charts.ptbLineBin = charts.sBinance.createPriceLine({
+      price: binance, color: t.binance, lineWidth: 1,
+      lineStyle: LightweightCharts.LineStyle.Dashed,
+      axisLabelVisible: true, title: "PTB Bin",
+    });
+    charts.ptbBinValue = binance;
+  }
+  if (chainlink > 0) {
+    const t = chartTheme();
+    charts.ptbLineCl = charts.sChainlink.createPriceLine({
+      price: chainlink, color: t.chainlink, lineWidth: 1,
+      lineStyle: LightweightCharts.LineStyle.Dashed,
+      axisLabelVisible: true, title: "PTB CL",
+    });
+    charts.ptbClValue = chainlink;
+  }
+}
+
+function ptbVenueKeys(coin, tf) {
+  return {
+    bin: `${coin}_${tf}_Binance`,
+    cl:  `${coin}_${tf}_Chainlink`,
+  };
+}
+
+function resolvePtbFromFrame(f, coin, tf) {
+  const keys = ptbVenueKeys(coin, tf);
+  const mkey = `${coin}_${tf}`;
+  let chainlink = f?.ptb_by_venue?.[keys.cl] || 0;
+  if (!(chainlink > 0) && (tf === '5m' || tf === '15m')) {
+    chainlink = f?.price_to_beat?.[mkey] || 0;
+  }
+  return {
+    binance:  f?.ptb_by_venue?.[keys.bin] || 0,
+    chainlink,
+  };
+}
+
+// Pin both charts' x-axis to the market window.
+// End anchor at toSec - 1 avoids the extra closing tick at the period boundary.
+function setChartWindow(fromSec, toSec) {
+  if (!(fromSec > 0) || !(toSec > fromSec)) return;
+  charts.windowFrom = fromSec;
+  charts.windowTo   = toSec;
+  charts.lastRepinSec = 0;
+  const endSec = toSec - 1;
+  const frame = [{ time: fromSec }, { time: endSec }];
+  charts.framePrice.setData(frame);
+  charts.frameYesno.setData(frame);
+  repinChartWindow(0);
+}
+
+// Set visible range. Live view grows rightward with each new second; historical shows full period.
+function repinChartWindow(latestSec) {
+  if (!(charts.windowFrom > 0) || !(charts.windowTo > charts.windowFrom)) return;
+  const endSec = charts.windowTo - 1;
+  let to = endSec;
+  if (isViewingLive() && latestSec > charts.windowFrom) {
+    // Follow current time so the chart moves forward in real time.
+    to = Math.min(endSec, latestSec + 8);
+  }
+  const range = { from: charts.windowFrom, to };
+  try { charts.price.timeScale().setVisibleRange(range); } catch (_) {}
+  try { charts.yesno.timeScale().setVisibleRange(range); } catch (_) {}
+}
+
+function resolveMarketWindow(slugEntry, tf, abRows) {
+  const winSecs = windowSecsForTf(tf);
+  let fromSec = slugEntry?.period_start ?? null;
+  if (fromSec == null && abRows.length > 0) {
+    fromSec = Math.floor(abRows[0].ts_ms / 1000 / winSecs) * winSecs;
+  }
+  if (fromSec == null) return null;
+  return { fromSec, toSec: fromSec + winSecs, fromMs: fromSec * 1000, toMs: (fromSec + winSecs) * 1000 };
+}
+
+function ptbVenueForTf(tf) {
+  return tf === '1h' ? 'binance' : 'chainlink';
+}
+
+async function fetchPtbForSlug(coin, tf, slug) {
+  if (!slug) return 0;
+  try {
+    const r = await fetch(`/api/ptb/${coin}/${tf}?slug=${encodeURIComponent(slug)}`);
+    if (!r.ok) return 0;
+    const data = await r.json();
+    return data?.price_to_beat > 0 ? data.price_to_beat : 0;
+  } catch (_) {
+    return 0;
+  }
+}
+
+function firstPtbTickFromPts(pts, fromSec) {
+  if (!fromSec || !pts.length) return 0;
+  const pt = pts.find(p => p.time >= fromSec);
+  return pt?.value > 0 ? pt.value : 0;
+}
+
+function clearAllSeries() {
+  charts.sBinance.setData([]);
+  charts.sChainlink.setData([]);
+  charts.sYesAsk.setData([]);
+  charts.sNoAsk.setData([]);
+  charts.framePrice.setData([]);
+  charts.frameYesno.setData([]);
+  charts.windowFrom = 0;
+  charts.windowTo = 0;
+  charts.lastRepinSec = 0;
+  charts.last = { bin: 0, cl: 0, ya: 0, na: 0 };
+  setPtbLines({ binance: 0, chainlink: 0 });
+}
+
+// ─────────────────────────────────────────────────────────
+//  History prefill from JSONL files on disk
+// ─────────────────────────────────────────────────────────
+async function loadHistoryFor(coin, tf, slug) {
+  const slugEntry = slugEntries.find(e => e.slug === slug);
+  const isLive    = slugEntry?.is_current ?? false;
+  const slugQ     = slug ? `&slug=${encodeURIComponent(slug)}` : '';
+
+  // ── Step 1: fetch YES/NO ask/bid history ─────────────────────────────
+  let abRows = [];
+  try {
+    const r = await fetch(`/api/ask_bid_history/${coin}/${tf}?limit=5000${slugQ}`);
+    if (r.ok) {
+      const rows = await r.json();
+      if (Array.isArray(rows) && rows.length > 0) abRows = rows;
+    }
+  } catch (_) {}
+
+  // Stale-check after async gap.
+  if (coin !== selectedCoin || tf !== selectedTF || slug !== activeSlug()) return;
+
+  const window = resolveMarketWindow(slugEntry, tf, abRows);
+  const fromMs = window?.fromMs ?? null;
+  const toMs   = window && !isLive ? window.toMs : null;
+
+  // Populate YES/NO series and header snapshot for historical slugs.
+  if (abRows.length > 0) {
+    const lastAb = abRows[abRows.length - 1];
+    if (!isLive) {
+      document.getElementById('px-yes-bid').textContent = fmtProb(lastAb.yes_best_bid);
+      document.getElementById('px-yes-ask').textContent = fmtProb(lastAb.yes_best_ask);
+      document.getElementById('px-no-bid').textContent  = fmtProb(lastAb.no_best_bid);
+      document.getElementById('px-no-ask').textContent  = fmtProb(lastAb.no_best_ask);
+    }
+    const yaPts = dedupePerSecond(
+      abRows.filter(r => r.yes_best_ask > 0).map(r => ({ t: r.ts_ms, p: r.yes_best_ask })),
+      "p",
+    );
+    const naPts = dedupePerSecond(
+      abRows.filter(r => r.no_best_ask > 0).map(r => ({ t: r.ts_ms, p: r.no_best_ask })),
+      "p",
+    );
+    charts.sYesAsk.setData(yaPts);
+    charts.sNoAsk.setData(naPts);
+    if (yaPts.length) charts.last.ya = yaPts[yaPts.length - 1].time;
+    if (naPts.length) charts.last.na = naPts[naPts.length - 1].time;
+  }
+
+  // ── Step 2: fetch price history scoped to the slug's time window ─────
+  let priceQuery = 'limit=5000';
+  if (fromMs !== null) priceQuery += `&from_ms=${fromMs}`;
+  if (toMs   !== null) priceQuery += `&to_ms=${toMs}`;
+
+  let ptbFromTicks = { binance: 0, chainlink: 0 };
+  const priceVenues = [
+    { key: "binance",   series: charts.sBinance,   last: "bin" },
+    { key: "chainlink", series: charts.sChainlink, last: "cl"  },
+  ];
+
+  await Promise.all(priceVenues.map(async ({ key, series, last }) => {
+    try {
+      const r = await fetch(`/api/history/${coin}/${key}?${priceQuery}`);
+      if (!r.ok) return;
+      const rows = await r.json();
+      if (!Array.isArray(rows) || !rows.length) return;
+      if (coin !== selectedCoin || tf !== selectedTF || slug !== activeSlug()) return;
+      const pts = dedupePerSecond(
+        rows.map(r => ({ t: r.ts_ms, p: r.price })).filter(p => p.p > 0),
+        "p",
+      );
+      series.setData(pts);
+      if (pts.length) charts.last[last] = pts[pts.length - 1].time;
+      if (window) {
+        const tick = firstPtbTickFromPts(pts, window.fromSec);
+        if (tick > 0) {
+          if (key === 'binance') ptbFromTicks.binance = tick;
+          if (key === 'chainlink') ptbFromTicks.chainlink = tick;
+        }
+      }
+    } catch (_) {}
+  }));
+
+  // Stale-check again after price fetch.
+  if (coin !== selectedCoin || tf !== selectedTF || slug !== activeSlug()) return;
+
+  // ── Step 3: pin x-axis AFTER all series data is loaded ───────────────
+  if (window) {
+    setChartWindow(window.fromSec, window.toSec);
+    const latest = Math.max(
+      charts.last.bin, charts.last.cl,
+      charts.last.ya, charts.last.na,
+    );
+    if (latest > 0) {
+      charts.lastRepinSec = latest;
+      repinChartWindow(latest);
+    }
+  }
+
+  // ── Step 3b: Binance + Chainlink price-to-beat lines ───────────────────
+  let ptb = resolvePtbFromFrame(isLive ? lastFrame : null, coin, tf);
+  if (coin !== selectedCoin || tf !== selectedTF || slug !== activeSlug()) return;
+  if (!(ptb.binance > 0) && isLive && lastFrame) {
+    ptb = resolvePtbFromFrame(lastFrame, coin, tf);
+  }
+  if (!(ptb.binance > 0)) ptb.binance = ptbFromTicks.binance;
+  if (!(ptb.chainlink > 0)) ptb.chainlink = ptbFromTicks.chainlink;
+  if (ptb.binance > 0 || ptb.chainlink > 0) {
+    setPtbLines(ptb);
+    if (!isViewingLive()) {
+      setVal('px-ptb-bin', ptb.binance, fmtPrice);
+      setVal('px-ptb-cl',  ptb.chainlink, fmtPrice);
+    }
+  }
+
+  // ── Step 4: historical order book (non-live slugs) ───────────────────
+  if (!isViewingLive()) {
+    await loadHistoricalOrderBook(coin, tf, slug || activeSlug());
+  }
+}
+
+async function loadHistoricalOrderBook(coin, tf, slug) {
+  if (!slug) return;
+  try {
+    const r = await fetch(`/api/orderbook/${coin}/${tf}/${encodeURIComponent(slug)}`);
+    if (!r.ok) return;
+    const book = await r.json();
+    if (!book || coin !== selectedCoin || tf !== selectedTF || slug !== activeSlug()) return;
+    document.getElementById('ob-h-slug').textContent = slug;
+    renderBookBlock('yes', book.yes_bids || [], book.yes_asks || []);
+    renderBookBlock('no',  book.no_bids  || [], book.no_asks  || []);
+
+    const topBid = (levels) => (levels || []).map(l => parseFloat(l.price) || 0)
+      .filter(p => p > 0).sort((a, b) => b - a)[0] || 0;
+    const topAsk = (levels) => (levels || []).map(l => parseFloat(l.price) || 0)
+      .filter(p => p > 0).sort((a, b) => a - b)[0] || 0;
+    document.getElementById('px-yes-bid').textContent = fmtProb(topBid(book.yes_bids));
+    document.getElementById('px-yes-ask').textContent = fmtProb(topAsk(book.yes_asks));
+    document.getElementById('px-no-bid').textContent  = fmtProb(topBid(book.no_bids));
+    document.getElementById('px-no-ask').textContent  = fmtProb(topAsk(book.no_asks));
+  } catch (_) {}
+}
+
+// ─────────────────────────────────────────────────────────
+//  Slug list + dropdown
+// ─────────────────────────────────────────────────────────
+async function refreshSlugDates() {
+  const coin = selectedCoin, tf = selectedTF;
+  try {
+    const r = await fetch(`/api/slug_dates/${coin}/${tf}`);
+    if (!r.ok) return;
+    const rows = await r.json();
+    if (coin !== selectedCoin || tf !== selectedTF) return;
+    if (!Array.isArray(rows) || !rows.length) return;
+    const dates = rows.map(row => row.date).filter(Boolean);
+    if (!dates.length) return;
+    elSlugDate.min = dates[dates.length - 1];
+    elSlugDate.max = dates[0];
+    if (!selectedDate || selectedDate < elSlugDate.min || selectedDate > elSlugDate.max) {
+      selectedDate = dates[0];
+      elSlugDate.value = selectedDate;
+    }
+  } catch (_) {}
+}
+
+async function refreshSlugList() {
+  const coin = selectedCoin, tf = selectedTF;
+  const prevLive = isViewingLive();
+  if (!selectedDate) {
+    selectedDate = todayEt();
+    elSlugDate.value = selectedDate;
+  }
+  try {
+    const dateQ = `&date=${encodeURIComponent(selectedDate)}`;
+    const r = await fetch(`/api/slugs/${coin}/${tf}?limit=500${dateQ}`);
+    if (!r.ok) return;
+    const rows = await r.json();
+    if (coin !== selectedCoin || tf !== selectedTF || selectedDate !== elSlugDate.value) return;
+    slugEntries = Array.isArray(rows) ? rows : [];
+    populateSlugSelect();
+    if (prevLive) {
+      const live = slugEntries.find(e => e.is_current);
+      if (live && live.slug !== selectedSlug) {
+        selectedSlug = live.slug;
+        elSlugSelect.value = live.slug;
+        clearAllSeries();
+        await loadHistoryFor(coin, tf, live.slug);
+      }
+    }
+    syncSlugBar();
+  } catch (_) {}
+}
+
+function populateSlugSelect() {
+  const prev = selectedSlug || activeSlug();
+  elSlugSelect.innerHTML = '';
+
+  if (!slugEntries.length) {
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = selectedDate ? `No markets on ${selectedDate}` : 'No markets collected yet';
+    opt.disabled = true;
+    opt.selected = true;
+    elSlugSelect.appendChild(opt);
+    return;
+  }
+
+  for (const entry of slugEntries) {
+    const opt = document.createElement('option');
+    opt.value = entry.slug;
+    const liveTag = entry.is_current ? '● LIVE  ' : '         ';
+    const range = entry.period_start ? fmtSlugRange(entry) : entry.slug;
+    opt.textContent = `${liveTag}${range}  ·  ${entry.line_count} rows`;
+    elSlugSelect.appendChild(opt);
+  }
+
+  const hasPrev = slugEntries.some(e => e.slug === prev);
+  if (hasPrev) {
+    elSlugSelect.value = prev;
+    selectedSlug = prev;
+  } else {
+    const live = slugEntries.find(e => e.is_current) || slugEntries[0];
+    selectedSlug = live.slug;
+    elSlugSelect.value = live.slug;
+  }
+}
+
+function syncSlugBar() {
+  const slug = activeSlug();
+  const entry = slugEntries.find(e => e.slug === slug);
+  const live = isViewingLive();
+
+  elSlugBadge.hidden = !live;
+  elSlugLiveBtn.hidden = live || !slugEntries.some(e => e.is_current);
+  document.getElementById('ob-h-slug').textContent = slug || '—';
+
+  if (entry) {
+    elSlugMeta.textContent = entry.period_start
+      ? `${fmtSlugRange(entry)} · ${entry.line_count} rows`
+      : `${entry.line_count} rows`;
+  } else {
+    elSlugMeta.textContent = '';
+  }
+}
+
+elSlugDate.addEventListener('change', async () => {
+  selectedDate = elSlugDate.value || todayEt();
+  selectedSlug = '';
+  await refreshSlugList();
+  const slug = activeSlug();
+  if (slug) onSlugChanged();
+  else clearAllSeries();
+});
+
+elSlugSelect.addEventListener('change', () => {
+  selectedSlug = elSlugSelect.value;
+  onSlugChanged();
+});
+
+elSlugLiveBtn.addEventListener('click', () => {
+  const live = slugEntries.find(e => e.is_current);
+  if (!live) return;
+  selectedSlug = live.slug;
+  elSlugSelect.value = live.slug;
+  onSlugChanged();
+});
+
+function onSlugChanged() {
+  syncSlugBar();
+  clearAllSeries();
+  loadHistoryFor(selectedCoin, selectedTF, activeSlug());
+  if (lastFrame && isViewingLive()) {
+    updateHeader(lastFrame);
+    updateOrderBook(lastFrame);
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+//  Selector wiring
+// ─────────────────────────────────────────────────────────
+document.querySelectorAll('#coin-btns .selector-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (btn.classList.contains('unavailable')) return;
+    document.querySelectorAll('#coin-btns .selector-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    selectedCoin = btn.dataset.coin;
+    onMarketChanged();
+  });
+});
+document.querySelectorAll('#tf-btns .selector-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (btn.classList.contains('unavailable')) return;
+    document.querySelectorAll('#tf-btns .selector-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    selectedTF = btn.dataset.tf;
+    onMarketChanged();
+  });
+});
+
+async function onMarketChanged() {
+  document.getElementById('ob-h-title').textContent = `${selectedCoin} · ${TF_LABEL[selectedTF]}`;
+  document.getElementById('price-title').textContent = `${selectedCoin} price`;
+  updateStratContext();
+  pollLiveStatus();
+
+  selectedSlug = '';
+  clearAllSeries();
+  await refreshSlugDates();
+  await refreshSlugList();
+  await loadHistoryFor(selectedCoin, selectedTF, activeSlug());
+  syncSlugBar();
+  if (lastFrame && isViewingLive()) {
+    updateHeader(lastFrame);
+    updateOrderBook(lastFrame);
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+//  Header update
+// ─────────────────────────────────────────────────────────
+function setVal(id, v, fn) {
+  const el = document.getElementById(id);
+  if (v && v > 0) { el.textContent = fn(v); el.classList.remove('muted'); }
+  else { el.textContent = '—'; el.classList.add('muted'); }
+}
+
+function updateHeader(f) {
+  const coin = selectedCoin, mkey = marketKey();
+
+  setVal('px-binance',   f.prices?.[`${coin}_Binance`],   fmtPrice);
+  setVal('px-chainlink', f.prices?.[`${coin}_Chainlink`], fmtPrice);
+  const ptb = resolvePtbFromFrame(f, coin, selectedTF);
+  setVal('px-ptb-bin', ptb.binance, fmtPrice);
+  setVal('px-ptb-cl',  ptb.chainlink, fmtPrice);
+
+  updateSpreadHeader(f, coin);
+
+  if (isViewingLive()) {
+    const yb = f.yes_best_bid?.[mkey] || 0;
+    const ya = f.yes_best_ask?.[mkey] || 0;
+    const nb = f.no_best_bid?.[mkey]  || 0;
+    const na = f.no_best_ask?.[mkey]  || 0;
+    document.getElementById('px-yes-bid').textContent = yb ? fmtProb(yb) : '—';
+    document.getElementById('px-yes-ask').textContent = ya ? fmtProb(ya) : '—';
+    document.getElementById('px-no-bid').textContent  = nb ? fmtProb(nb) : '—';
+    document.getElementById('px-no-ask').textContent  = na ? fmtProb(na) : '—';
+  }
+
+  const st  = document.getElementById('status');
+  const stx = document.getElementById('status-text');
+  if (f.collector_connected) { st.className = 'status ok';  stx.textContent = 'live'; }
+  else                       { st.className = 'status bad'; stx.textContent = 'collector offline'; }
+
+  const tfs = ['5m','15m','1h'];
+  document.querySelectorAll('#coin-btns .selector-btn').forEach(btn => {
+    const c = btn.dataset.coin;
+    const has = tfs.some(t =>
+      (f.yes_best_ask?.[`${c}_${t}`] || 0) > 0
+      || (f.yes_best_bid?.[`${c}_${t}`] || 0) > 0);
+    btn.classList.toggle('unavailable', !has && c !== selectedCoin);
+  });
+  document.querySelectorAll('#tf-btns .selector-btn').forEach(btn => {
+    const t = btn.dataset.tf;
+    const has = (f.yes_best_ask?.[`${coin}_${t}`] || 0) > 0
+             || (f.yes_best_bid?.[`${coin}_${t}`] || 0) > 0;
+    btn.classList.toggle('unavailable', !has && t !== selectedTF);
+  });
+}
+
+// ─────────────────────────────────────────────────────────
+//  Order book rendering (unchanged from previous version)
+// ─────────────────────────────────────────────────────────
+const MAX_OB_LEVELS = 12;
+
+function renderBookSide(rowsEl, levels, side, sortDesc) {
+  const parsed = levels
+    .map(l => ({ price: parseFloat(l.price) || 0, size: parseFloat(l.size) || 0 }))
+    .filter(l => l.price > 0 && l.size > 0);
+  parsed.sort((a, b) => sortDesc ? b.price - a.price : a.price - b.price);
+  let display = parsed.slice(0, MAX_OB_LEVELS);
+  if (side === 'ask') display.reverse();
+
+  const cum = new Array(display.length);
+  let acc = 0;
+  if (side === 'ask') {
+    for (let i = display.length - 1; i >= 0; i--) { acc += display[i].size; cum[i] = acc; }
+  } else {
+    for (let i = 0; i < display.length; i++)      { acc += display[i].size; cum[i] = acc; }
+  }
+  const maxTotal = cum.length ? Math.max(...cum) : 1;
+
+  rowsEl.innerHTML = display.map((l, i) => {
+    const pct = (cum[i] / maxTotal * 100).toFixed(1);
+    const bg = side === 'ask' ? themeColor('--ob-ask-fill') : themeColor('--ob-bid-fill');
+    return `<div class="row ${side}">
+      <span class="price">${l.price.toFixed(4)}</span>
+      <span class="size">${fmtSize.format(l.size)}</span>
+      <span class="total">${fmtSize.format(cum[i])}</span>
+      <span style="position:absolute;right:0;top:0;bottom:0;width:${pct}%;background:${bg};z-index:0;pointer-events:none"></span>
+    </div>`;
+  }).join('') || '<div class="ob-empty">no levels</div>';
+}
+
+function renderBookBlock(prefix, bidsRaw, asksRaw) {
+  renderBookSide(document.getElementById(`${prefix}-asks-rows`), asksRaw || [], 'ask', false);
+  renderBookSide(document.getElementById(`${prefix}-bids-rows`), bidsRaw || [], 'bid', true);
+
+  const bestBid = (bidsRaw || []).map(l => parseFloat(l.price) || 0)
+    .filter(p => p > 0).sort((a, b) => b - a)[0] || 0;
+  const bestAsk = (asksRaw || []).map(l => parseFloat(l.price) || 0)
+    .filter(p => p > 0).sort((a, b) => a - b)[0] || 0;
+
+  const midEl = document.getElementById(`${prefix}-mid-label`);
+  midEl.textContent = (bestBid > 0 && bestAsk > 0)
+    ? `mid ${((bestBid + bestAsk) / 2).toFixed(4)}` : 'mid —';
+
+  const spreadEl = document.getElementById(`${prefix}-spread`);
+  if (bestBid > 0 && bestAsk > 0) {
+    const spread = bestAsk - bestBid;
+    spreadEl.innerHTML = `<span>spread</span>
+      <span class="spread-val">${spread.toFixed(4)} (${(spread * 100).toFixed(2)}¢)</span>`;
+  } else {
+    spreadEl.innerHTML = `<span>spread</span><span class="spread-val">—</span>`;
+  }
+}
+
+function updateOrderBook(f) {
+  if (!isViewingLive()) return;
+  const book = f.books?.[marketKey()];
+  document.getElementById('ob-h-slug').textContent = activeSlug() || '—';
+  if (!book) {
+    renderBookBlock('yes', [], []);
+    renderBookBlock('no',  [], []);
+    return;
+  }
+  renderBookBlock('yes', book.yes_bids, book.yes_asks);
+  renderBookBlock('no',  book.no_bids,  book.no_asks);
+}
+
+// ─────────────────────────────────────────────────────────
+//  Live tick updates → push to lightweight-charts series
+// ─────────────────────────────────────────────────────────
+// Push a single tick to a series, dropping out-of-order points (lightweight-charts requires monotonic time).
+function pushTick(series, lastKey, sec, value) {
+  if (value <= 0) return;
+  if (charts.windowTo > 0 && sec >= charts.windowTo) return;
+  if (sec < charts.last[lastKey]) return;
+  // Seed the series at market open so sparse feeds draw from t=0.
+  if (charts.windowFrom > 0 && charts.last[lastKey] === 0 && sec > charts.windowFrom) {
+    try {
+      series.update({ time: charts.windowFrom, value });
+      charts.last[lastKey] = charts.windowFrom;
+    } catch (_) {}
+  }
+  try {
+    series.update({ time: sec, value });
+    charts.last[lastKey] = Math.max(charts.last[lastKey], sec);
+  } catch (_) {}
+}
+
+function applyFrameToCharts(f) {
+  if (!isViewingLive()) return;
+  const coin = selectedCoin, mkey = marketKey();
+  const sec  = Math.floor(f.ts_ms / 1000);
+
+  const bin = f.prices?.[`${coin}_Binance`]   || 0;
+  const cl  = f.prices?.[`${coin}_Chainlink`] || 0;
+  const ptb = resolvePtbFromFrame(f, coin, selectedTF);
+  const ya  = f.yes_best_ask?.[mkey]          || 0;
+  const na  = f.no_best_ask?.[mkey]           || 0;
+
+  pushTick(charts.sBinance,   "bin", sec, bin);
+  pushTick(charts.sChainlink, "cl",  sec, cl);
+  pushTick(charts.sYesAsk,    "ya",  sec, ya);
+  pushTick(charts.sNoAsk,     "na",  sec, na);
+
+  if ((ptb.binance > 0 && ptb.binance !== charts.ptbBinValue)
+   || (ptb.chainlink > 0 && ptb.chainlink !== charts.ptbClValue)) {
+    setPtbLines(ptb);
+  }
+
+  // Expand visible window when a new second arrives (not every 200 ms frame).
+  if (sec !== charts.lastRepinSec) {
+    charts.lastRepinSec = sec;
+    repinChartWindow(sec);
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+//  Master redraw
+// ─────────────────────────────────────────────────────────
+let lastFrame = null;
+function redrawAll(f) {
+  updateHeader(f);
+  if (!isViewingLive()) return;
+  updateOrderBook(f);
+  applyFrameToCharts(f);
+}
+
+// ─────────────────────────────────────────────────────────
+//  WebSocket
+// ─────────────────────────────────────────────────────────
+let ws = null, reconnectTimer = null, wsReconnectMs = 500;
+
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws`);
+
+  ws.onopen = () => {
+    document.getElementById('status').className = 'status ok';
+    document.getElementById('status-text').textContent = 'live';
+    wsReconnectMs = 500;
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  };
+
+  ws.onmessage = e => {
+    let frame;
+    try { frame = JSON.parse(e.data); } catch { return; }
+    lastFrame = frame;
+    redrawAll(frame);
+  };
+
+  ws.onclose = ws.onerror = () => {
+    document.getElementById('status').className = 'status bad';
+    document.getElementById('status-text').textContent = 'reconnecting…';
+    reconnectTimer = setTimeout(connectWS, wsReconnectMs);
+    wsReconnectMs = Math.min(wsReconnectMs * 2, 10_000);
+  };
+}
+
+// ─────────────────────────────────────────────────────────
+//  Strategy backtest (3 independent cards)
+// ─────────────────────────────────────────────────────────
+let stratDefaults = null;
+let selectedStrategy = 'dual_45c';
+
+const STRATEGY_IDS = ['dual_45c', 'momentum_90c', 'ptb_deviation'];
+
+function selectStrategy(strategy) {
+  if (!STRATEGY_IDS.includes(strategy)) return;
+  selectedStrategy = strategy;
+  document.querySelectorAll('.strat-select-btn').forEach(btn => {
+    const on = btn.dataset.stratSelect === strategy;
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  document.querySelectorAll('.strat-card').forEach(card => {
+    card.classList.toggle('active', card.dataset.strat === strategy);
+  });
+}
+
+const MOMENTUM_THRESHOLDS = { BTC: 20, ETH: 4, SOL: 0.12, BNB: 2, DOGE: 0.01, XRP: 0.1, HYPE: 0.2 };
+const PTB_THRESHOLDS = {
+  BTC_5m: 145, BTC_15m: 128, ETH_5m: 9, ETH_15m: 6, SOL_5m: 0.3, SOL_15m: 0.45,
+  BNB_5m: 2, BNB_15m: 1.5, DOGE_5m: 0.01, DOGE_15m: 0.008, XRP_5m: 0.1, XRP_15m: 0.08,
+  HYPE_5m: 0.2, HYPE_15m: 0.15,
+};
+
+function stratCard(strategy) {
+  return document.querySelector(`.strat-card[data-strat="${strategy}"]`);
+}
+
+function stratParam(strategy, name) {
+  const card = stratCard(strategy);
+  const el = card?.querySelector(`[data-param="${name}"]`);
+  return el ? Number(el.value) : undefined;
+}
+
+function momentumThreshold() {
+  return MOMENTUM_THRESHOLDS[selectedCoin] ?? 10;
+}
+
+function ptbThreshold() {
+  return PTB_THRESHOLDS[`${selectedCoin}_${selectedTF}`] ?? momentumThreshold();
+}
+
+function updateStratContext() {
+  const ctx = document.getElementById('strat-ctx');
+  if (ctx) ctx.textContent = `${selectedCoin} · ${TF_LABEL[selectedTF]}`;
+  const histCtx = document.getElementById('live-history-ctx');
+  if (histCtx) histCtx.textContent = `${selectedCoin} · ${TF_LABEL[selectedTF]}`;
+
+  const momTh = stratCard('momentum_90c')?.querySelector('[data-param="threshold_usd"]');
+  if (momTh && stratDefaults?.momentum_90c) {
+    momTh.placeholder = String(momentumThreshold());
+    if (!momTh.dataset.userEdited) momTh.value = String(momentumThreshold());
+  }
+  const ptbTh = stratCard('ptb_deviation')?.querySelector('[data-param="threshold_usd"]');
+  if (ptbTh) {
+    ptbTh.placeholder = String(ptbThreshold());
+    if (!ptbTh.dataset.userEdited) ptbTh.value = String(ptbThreshold());
+  }
+}
+
+function syncStratDates() {
+  const d = elSlugDate.value || selectedDate || todayEt();
+  const start = document.getElementById('strat-start');
+  const end = document.getElementById('strat-end');
+  if (start && !start.value) start.value = d;
+  if (end && !end.value) end.value = d;
+}
+
+function fmtPnl(v) {
+  return (v >= 0 ? '+' : '') + v.toFixed(2);
+}
+
+function renderStratSummary(strategy, summary) {
+  const box = document.querySelector(`[data-summary="${strategy}"]`);
+  if (!box) return;
+  box.hidden = false;
+  const set = (k, text, cls) => {
+    const el = box.querySelector(`[data-k="${k}"]`);
+    if (!el) return;
+    el.textContent = text;
+    if (cls) el.className = 'val ' + cls;
+    else el.className = 'val';
+  };
+  set('markets', String(summary.markets));
+  set('trades', String(summary.trades));
+  set('winrate', summary.trades ? (summary.win_rate * 100).toFixed(1) + '%' : '—');
+  set('wins', String(summary.wins));
+  set('losses', String(summary.losses));
+  set('pnl', fmtPnl(summary.total_pnl), summary.total_pnl >= 0 ? 'pos' : 'neg');
+}
+
+function renderStratResults(strategy, data) {
+  const box = document.querySelector(`[data-results="${strategy}"]`);
+  if (!box) return;
+  box.hidden = false;
+  const s = data.summary;
+
+  if (s.strategy === 'dual_45c' && data.results?.length) {
+    const rows = data.results.slice(-30).map(r => {
+      const yes = r.yes_fill ? `${r.yes_fill.entry.toFixed(2)} ${r.yes_fill.won ? 'W' : 'L'}` : '—';
+      const no = r.no_fill ? `${r.no_fill.entry.toFixed(2)} ${r.no_fill.won ? 'W' : 'L'}` : '—';
+      const pnlCls = r.total_pnl >= 0 ? 'win' : 'loss';
+      return `<tr><td>${r.slug.slice(-8)}</td><td>${r.settlement}</td><td>${yes}</td><td>${no}</td><td class="${pnlCls}">${fmtPnl(r.total_pnl)}</td></tr>`;
+    }).join('');
+    box.innerHTML = `<table><thead><tr><th>Slug</th><th>Settle</th><th>YES</th><th>NO</th><th>PnL</th></tr></thead><tbody>${rows}</tbody></table>`;
+    return;
+  }
+
+  const trades = data.trades || [];
+  if (!trades.length) {
+    box.innerHTML = '<div style="padding:8px;color:var(--muted)">No trades in range</div>';
+    return;
+  }
+  const rows = trades.slice(-30).map(t => {
+    const cls = t.won ? 'win' : 'loss';
+    return `<tr><td>${t.slug.slice(-8)}</td><td>${t.side.toUpperCase()}</td><td>${t.entry.toFixed(2)}</td><td class="${cls}">${t.won ? 'W' : 'L'}</td><td class="${cls}">${fmtPnl(t.pnl)}</td></tr>`;
+  }).join('');
+  box.innerHTML = `<table><thead><tr><th>Slug</th><th>Side</th><th>Entry</th><th></th><th>PnL</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function buildStratRequest(strategy) {
+  const start = document.getElementById('strat-start')?.value;
+  const end = document.getElementById('strat-end')?.value;
+  const body = {
+    strategy,
+    asset: selectedCoin,
+    tf: selectedTF,
+    start_date: start,
+    end_date: end,
+    shares: stratParam(strategy, 'shares') || 5,
+    limit_price: stratParam(strategy, 'limit_price'),
+  };
+  if (strategy === 'momentum_90c') {
+    body.threshold_usd = stratParam(strategy, 'threshold_usd');
+    body.window_secs = stratParam(strategy, 'window_secs');
+    body.signal_tail_secs = stratParam(strategy, 'signal_tail_secs');
+  } else if (strategy === 'ptb_deviation') {
+    body.threshold_usd = stratParam(strategy, 'threshold_usd');
+    body.signal_window_secs = stratParam(strategy, 'signal_window_secs');
+  }
+  return body;
+}
+
+async function loadStratDefaults() {
+  try {
+    const res = await fetch('/api/strategies');
+    if (!res.ok) return;
+    stratDefaults = await res.json();
+    const dual = stratCard('dual_45c');
+    const mom = stratCard('momentum_90c');
+    const ptb = stratCard('ptb_deviation');
+    if (dual && stratDefaults.dual_45c) {
+      dual.querySelector('[data-param="shares"]').value = stratDefaults.dual_45c.shares;
+      dual.querySelector('[data-param="limit_price"]').value = stratDefaults.dual_45c.limit_price;
+    }
+    if (mom && stratDefaults.momentum_90c) {
+      const d = stratDefaults.momentum_90c;
+      mom.querySelector('[data-param="shares"]').value = d.shares;
+      mom.querySelector('[data-param="limit_price"]').value = d.limit_price;
+      mom.querySelector('[data-param="window_secs"]').value = d.window_secs;
+      mom.querySelector('[data-param="signal_tail_secs"]').value = d.signal_tail_secs;
+    }
+    if (ptb && stratDefaults.ptb_deviation) {
+      const d = stratDefaults.ptb_deviation;
+      ptb.querySelector('[data-param="shares"]').value = d.shares;
+      ptb.querySelector('[data-param="limit_price"]').value = d.limit_price;
+      ptb.querySelector('[data-param="signal_window_secs"]').value = d.signal_window_secs;
+    }
+  updateStratContext();
+  pollLiveStatus();
+} catch (_) {}
+}
+
+function buildLiveRequest(strategy) {
+  const body = buildStratRequest(strategy);
+  delete body.start_date;
+  delete body.end_date;
+  return body;
+}
+
+function renderLivePanel(strategy, state) {
+  const panel = document.querySelector(`[data-live-panel="${strategy}"]`);
+  const badge = document.querySelector(`[data-live-badge="${strategy}"]`);
+  const msg = document.querySelector(`[data-live-msg="${strategy}"]`);
+  const sigBox = document.querySelector(`[data-live-signals="${strategy}"]`);
+  const btn = stratCard(strategy)?.querySelector('.strat-live-btn');
+  if (!panel || !badge || !msg || !sigBox || !btn) return;
+
+  const active = state?.active;
+  panel.hidden = false;
+  badge.textContent = active ? 'LIVE' : 'OFF';
+  badge.className = 'live-badge' + (active ? '' : ' off');
+  msg.textContent = state?.status || (active ? 'Watching…' : 'Not running');
+  btn.textContent = active ? 'Stop live' : 'Live trading';
+  btn.classList.toggle('active', !!active);
+
+  const signals = state?.signals || [];
+  if (!signals.length) {
+    sigBox.innerHTML = '<div style="color:var(--muted)">No signals yet</div>';
+  } else {
+    sigBox.innerHTML = signals.slice().reverse().slice(0, 8).map(s =>
+      `<div class="sig">${new Date(s.ts_ms).toLocaleTimeString()} · ${s.message}</div>`
+    ).join('');
+  }
+}
+
+async function pollLiveStatus() {
+  try {
+    const res = await fetch('/api/strategies/live');
+    if (!res.ok) return;
+    const runners = await res.json();
+    const byKey = new Map(runners.map(r => [`${r.strategy}:${r.asset}:${r.tf}`, r]));
+    for (const strategy of ['dual_45c', 'momentum_90c', 'ptb_deviation']) {
+      const key = `${strategy}:${selectedCoin}:${selectedTF}`;
+      const state = byKey.get(key) || null;
+      renderLivePanel(strategy, state);
+    }
+  } catch (_) {}
+  pollLiveHistory();
+}
+
+const STRAT_LABELS = {
+  dual_45c: '45c Dual',
+  momentum_90c: '90c Mom',
+  ptb_deviation: 'PTB Dev',
+};
+
+function renderLiveHistory(rows) {
+  const body = document.getElementById('live-history-body');
+  if (!body) return;
+  if (!rows?.length) {
+    body.innerHTML = '<tr><td colspan="7" class="live-history-empty">No live trades yet</td></tr>';
+    return;
+  }
+  body.innerHTML = rows.map(r => {
+    const sideCls = r.side === 'yes' ? 'side-yes' : 'side-no';
+    const sideLbl = r.side === 'yes' ? 'UP' : 'DOWN';
+    const stCls = r.status === 'ok' ? 'st-ok' : r.status === 'error' ? 'st-err' : 'st-paper';
+    const stLbl = r.status === 'ok' ? 'OK' : r.status === 'error' ? 'ERR' : 'PAPER';
+    const errTip = r.error ? ` title="${String(r.error).replace(/"/g, '&quot;')}"` : '';
+    const oid = r.order_id ? `<span class="oid"${errTip}>${r.order_id}</span>` : '—';
+    return `<tr>
+      <td>${new Date(r.ts_ms).toLocaleTimeString()}</td>
+      <td>${STRAT_LABELS[r.strategy] || r.strategy}</td>
+      <td class="${sideCls}">${sideLbl}</td>
+      <td>${Number(r.price).toFixed(2)}</td>
+      <td>${r.shares}</td>
+      <td>${oid}</td>
+      <td class="${stCls}"${errTip}>${stLbl}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function pollLiveHistory() {
+  try {
+    const q = new URLSearchParams({
+      asset: selectedCoin,
+      tf: selectedTF,
+      limit: '100',
+    });
+    const res = await fetch(`/api/strategies/live/history?${q}`);
+    if (!res.ok) return;
+    renderLiveHistory(await res.json());
+  } catch (_) {}
+}
+
+async function toggleLiveTrading(strategy) {
+  const btn = stratCard(strategy)?.querySelector('.strat-live-btn');
+  const isActive = btn?.classList.contains('active');
+  btn.disabled = true;
+  try {
+    if (isActive) {
+      const res = await fetch('/api/strategies/live/stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ strategy, asset: selectedCoin, tf: selectedTF }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      renderLivePanel(strategy, data);
+    } else {
+      const res = await fetch('/api/strategies/live/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildLiveRequest(strategy)),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      renderLivePanel(strategy, data);
+    }
+  } catch (err) {
+    const msg = document.querySelector(`[data-live-msg="${strategy}"]`);
+    if (msg) msg.textContent = err.message || 'Live trading error';
+  } finally {
+    btn.disabled = false;
+    pollLiveStatus();
+    pollLiveHistory();
+  }
+}
+
+async function runStratBacktest(strategy) {
+  const statusEl = document.querySelector(`[data-status="${strategy}"]`);
+  const runBtn = stratCard(strategy)?.querySelector('.strat-run');
+  const start = document.getElementById('strat-start')?.value;
+  const end = document.getElementById('strat-end')?.value;
+  if (!start || !end) {
+    statusEl.textContent = 'Select start and end dates above';
+    statusEl.className = 'strat-status err';
+    return;
+  }
+
+  statusEl.textContent = 'Running…';
+  statusEl.className = 'strat-status';
+  runBtn.disabled = true;
+  document.querySelector(`[data-summary="${strategy}"]`).hidden = true;
+  document.querySelector(`[data-results="${strategy}"]`).hidden = true;
+
+  try {
+    const res = await fetch('/api/strategies/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(buildStratRequest(strategy)),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    renderStratSummary(strategy, data.summary);
+    renderStratResults(strategy, data);
+    statusEl.textContent = `${data.summary.trades} trades · skipped ${data.summary.skipped}`;
+    statusEl.className = 'strat-status';
+  } catch (err) {
+    statusEl.textContent = err.message || 'Backtest failed';
+    statusEl.className = 'strat-status err';
+  } finally {
+    runBtn.disabled = false;
+  }
+}
+
+function initStrategiesUi() {
+  selectStrategy(selectedStrategy);
+  document.getElementById('strat-select-btns')?.addEventListener('click', e => {
+    const btn = e.target.closest('.strat-select-btn');
+    if (!btn) return;
+    selectStrategy(btn.dataset.stratSelect);
+  });
+  document.querySelectorAll('.strat-run').forEach(btn => {
+    btn.addEventListener('click', () => runStratBacktest(btn.dataset.run));
+  });
+  document.querySelectorAll('.strat-live-btn').forEach(btn => {
+    btn.addEventListener('click', () => toggleLiveTrading(btn.dataset.live));
+  });
+  document.querySelectorAll('[data-param="threshold_usd"]').forEach(el => {
+    el.addEventListener('input', () => { el.dataset.userEdited = '1'; });
+  });
+  elSlugDate.addEventListener('change', syncStratDates);
+  pollLiveStatus();
+  setInterval(pollLiveStatus, 2000);
+}
+
+// ─────────────────────────────────────────────────────────
+//  Bootstrap
+// ─────────────────────────────────────────────────────────
+initCharts();
+tickEstClock();
+setInterval(tickEstClock, 1000);
+selectedDate = todayEt();
+elSlugDate.value = selectedDate;
+syncStratDates();
+initStrategiesUi();
+loadStratDefaults();
+onMarketChanged();
+connectWS();
+setInterval(refreshSlugList, 15_000);
+</script>
+</body>
+</html>

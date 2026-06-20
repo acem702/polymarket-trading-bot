@@ -1,0 +1,32 @@
+module.exports = {
+  apps: [
+    {
+      name: "polypulse-collector",
+      script: "packages/collector/dist/main.js",
+      args: "--env .env",
+      cwd: "/root/polymarket-multi-tool-ts",
+      interpreter: "node",
+      autorestart: true,
+      restart_delay: 3000,
+      max_restarts: 20,
+      watch: false,
+      out_file: "./logs/collector.log",
+      error_file: "./logs/collector.err",
+      time: true,
+    },
+    {
+      name: "polypulse-dashboard",
+      script: "packages/dashboard/dist/main.js",
+      args: "--env .env",
+      cwd: "/root/polymarket-multi-tool-ts",
+      interpreter: "node",
+      autorestart: true,
+      restart_delay: 3000,
+      max_restarts: 20,
+      watch: false,
+      out_file: "./logs/dashboard.log",
+      error_file: "./logs/dashboard.err",
+      time: true,
+    },
+  ],
+};

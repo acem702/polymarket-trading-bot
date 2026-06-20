@@ -1,0 +1,11 @@
+node_modules/
+dist/
+data/
+logs/*.log
+logs/*.err
+*.sock
+.env
+.DS_Store
+*.tsbuildinfo
+**/*.d.ts.map
+**/*.js.map

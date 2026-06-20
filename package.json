@@ -1,0 +1,23 @@
+{
+  "name": "polypulse",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @pmt/shared && npm run build -w @pmt/strategies && npm run build -w @pmt/collector && npm run build -w @pmt/dashboard",
+    "collector": "tsx packages/collector/src/main.ts",
+    "dashboard": "tsx packages/dashboard/src/main.ts",
+    "collector:prod": "node packages/collector/dist/main.js",
+    "dashboard:prod": "node packages/dashboard/dist/main.js",
+    "dev": "npm run build -w @pmt/shared && concurrently -n collector,dashboard -c cyan,magenta \"npm run collector\" \"npm run dashboard\""
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.21",
+    "@types/ws": "^8.18.1",
+    "concurrently": "^9.1.2",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  }
+}
