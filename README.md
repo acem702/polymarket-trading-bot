@@ -18,7 +18,7 @@ Whether you're looking for a Polymarket arbitrage bot or an automated trading so
 - ✅ **Live Market Data** — Real-time price feeds from Binance and Chainlink
 - ✅ **Strategy Backtesting** — Test trading strategies on historical data
 - ✅ **Web Dashboard** — Monitor positions and trading history in real-time
-- ✅ **Multiple Strategies** — 45c Dual, 90c Momentum, PTB Deviation
+- ✅ **Multiple Strategies** — 45c Dual, 90c Momentum, PTB Deviation.
 
 **Supported Assets:** **BTC, ETH, XRP, SOL, BNB, HYPE, DOGE**  
 **Supported Timeframes:** **5m, 15m, 1h**
