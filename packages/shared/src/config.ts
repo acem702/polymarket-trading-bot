@@ -200,9 +200,10 @@ function buildConfig(): BotConfig {
 /** Load configuration from a `.env` file and process environment variables. */
 export function loadConfig(envPath = ".env"): BotConfig {
   const abs = resolve(envPath);
+  const defaultEnv = resolve(".env");
   if (existsSync(abs)) {
     dotenv.config({ path: abs, override: false });
-  } else if (envPath !== ".env") {
+  } else if (abs !== defaultEnv) {
     throw new Error(`env file not found: ${abs}`);
   }
   return buildConfig();

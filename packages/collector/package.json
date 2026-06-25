@@ -11,8 +11,7 @@
     "@pmt/shared": "1.0.0",
     "commander": "^13.1.0",
     "pino": "^9.6.0",
-    "ws": "^8.18.2",
-    "poly-kelly":"^3.0.0"
+    "ws": "^8.18.2"
   },
   "devDependencies": {
     "@types/node": "^22.15.21",

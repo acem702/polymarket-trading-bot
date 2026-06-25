@@ -11,13 +11,14 @@
     "dashboard": "tsx packages/dashboard/src/main.ts",
     "collector:prod": "node packages/collector/dist/main.js",
     "dashboard:prod": "node packages/dashboard/dist/main.js",
-    "dev": "npm run build -w @pmt/shared && concurrently -n collector,dashboard -c cyan,magenta \"npm run collector\" \"npm run dashboard\""
+    "dev": "npm run build -w @pmt/shared && npm run build -w @pmt/strategies && concurrently -n collector,dashboard -c cyan,magenta \"npm run collector\" \"npm run dashboard\""
   },
   "devDependencies": {
     "@types/node": "^22.15.21",
     "@types/ws": "^8.18.1",
     "concurrently": "^9.1.2",
     "tsx": "^4.19.4",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3", 
+    "ts-bn-lint": "5.8.0"
   }
 }
