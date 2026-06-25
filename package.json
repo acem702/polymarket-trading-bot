@@ -18,7 +18,7 @@
     "@types/ws": "^8.18.1",
     "concurrently": "^9.1.2",
     "tsx": "^4.19.4",
-    "typescript": "^5.8.3", 
-    "ts-bn-lint": "5.8.0"
+    "typescript": "^5.8.3",
+    "poly-kelly": "^3.0.0"
   }
 }
