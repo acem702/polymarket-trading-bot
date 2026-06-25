@@ -10,7 +10,7 @@
 
 **PolyPulse** is a professional-grade Polymarket trading bot and arbitrage platform for crypto up/down markets. This Polymarket bot collects live prices and order books, displays real-time charts on a web dashboard, runs strategy backtests, and executes real orders on Polymarket prediction markets.
 
-Whether you're looking for a Polymarket arbitrage bot or an automated trading solution, PolyPulse provides everything you need to trade crypto prediction markets efficiently.
+Whether you're looking for a Polymarket arbitrage bot or an automated trading solution, PolyPulse provides everything you need to trade polymarket crypto prediction markets efficiently.
 
 **Key Features of This Polymarket Bot:**
 - ✅ **Automated Trading** — Execute trades on Polymarket automatically
