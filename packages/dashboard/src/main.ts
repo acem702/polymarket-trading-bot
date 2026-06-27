@@ -9,7 +9,14 @@ import { loadConfig, parseAsset, parseTimeFrame, tradingStatus, validateTradingC
 import { listStrategyDefaults, runStrategy, type StrategyRunRequest } from "./strategies.js";
 import { ClobExecutor } from "./clob-executor.js";
 import { LiveTradeHistory } from "./live-history.js";
-import { LiveStrategyEngine, spawnLiveEngineTicker } from "./live-engine.js";
+import {
+  LiveStrategyEngine,
+  spawnFillPoller,
+  spawnLiveEngineTicker,
+  spawnSettlementReconciler,
+} from "./live-engine.js";
+import { RiskManager } from "./risk-manager.js";
+import { ResultsLog } from "./results-log.js";
 import {
   createLiveState,
   getWsFrame,
@@ -46,16 +53,49 @@ const live = createLiveState();
 const clobExecutor = new ClobExecutor(tc);
 await clobExecutor.init();
 const liveHistory = new LiveTradeHistory(dc.data_dir);
-const liveEngine = new LiveStrategyEngine(tc, clobExecutor, liveHistory);
+const riskManager = new RiskManager(cfg.risk, join(dc.data_dir, "risk-state.json"));
+const resultsLog = new ResultsLog(dc.data_dir);
+const liveEngine = new LiveStrategyEngine(
+  tc,
+  clobExecutor,
+  liveHistory,
+  riskManager,
+  resultsLog,
+  join(dc.data_dir, "pending-settlements.json"),
+);
 spawnCollectorSubscriber(dc.ipc_path, live);
 spawnStalenessWatchdog(live);
 spawnLiveEngineTicker(live, liveEngine);
+spawnFillPoller(liveEngine);
+spawnSettlementReconciler(liveEngine);
 
 const app = Fastify({
   logger: {
     base: { pid: process.pid },
   },
 });
+
+// ── API auth (D1) ───────────────────────────────────────────────────
+// When DASHBOARD_TOKEN is set, /api + /ws require a matching bearer token
+// (Authorization: Bearer <t> or ?token=<t>). Static files and /health stay open.
+if (dc.token) {
+  app.addHook("onRequest", async (req, reply) => {
+    const url = req.url || "";
+    if (!url.startsWith("/api") && !url.startsWith("/ws")) return;
+    const auth = req.headers.authorization;
+    const fromHeader =
+      typeof auth === "string" && auth.startsWith("Bearer ") ? auth.slice(7).trim() : undefined;
+    const q = req.query as { token?: string } | undefined;
+    const provided = fromHeader ?? (typeof q?.token === "string" ? q.token : undefined);
+    if (provided !== dc.token) {
+      await reply.code(401).send({ error: "unauthorized" });
+      return reply;
+    }
+  });
+  app.log.info("API auth enabled (DASHBOARD_TOKEN set)");
+} else {
+  app.log.warn("API auth DISABLED — set DASHBOARD_TOKEN before exposing this instance publicly");
+}
 
 await app.register(fastifyStatic, {
   root: STATIC_DIR,
@@ -157,7 +197,35 @@ app.get("/api/strategies", async () => listStrategyDefaults(sc));
 app.get("/api/trading/status", async () => ({
   ...tradingStatus(tc),
   executor: clobExecutor.status(),
+  risk: riskManager.snapshot(),
 }));
+
+app.get("/api/risk", async () => riskManager.snapshot());
+
+app.get("/health", async () => {
+  const mem = process.memoryUsage();
+  return {
+    ok: true,
+    uptime_s: Math.round(process.uptime()),
+    rss_mb: Math.round(mem.rss / 1048576),
+    heap_used_mb: Math.round(mem.heapUsed / 1048576),
+    collector_connected: live.connected,
+    last_frame_age_ms: live.lastUpdateMs ? Date.now() - live.lastUpdateMs : null,
+  };
+});
+
+// Heap/feed heartbeat for long unattended runs.
+setInterval(() => {
+  const mem = process.memoryUsage();
+  app.log.info(
+    {
+      rss_mb: Math.round(mem.rss / 1048576),
+      heap_mb: Math.round(mem.heapUsed / 1048576),
+      collector_connected: live.connected,
+    },
+    "health",
+  );
+}, 60_000);
 
 app.post<{ Body: import("./strategies.js").StrategyRunRequest }>(
   "/api/strategies/run",
@@ -176,6 +244,22 @@ app.post<{ Body: import("./strategies.js").StrategyRunRequest }>(
 );
 
 app.get("/api/strategies/live", async () => liveEngine.list());
+
+app.get<{ Querystring: { asset?: string; tf?: string; strategy?: string; mode?: string; limit?: string } }>(
+  "/api/strategies/results",
+  async (req) => {
+    const q = {
+      asset: req.query.asset,
+      tf: req.query.tf,
+      strategy: req.query.strategy,
+      mode: req.query.mode,
+    };
+    return {
+      summary: resultsLog.summary(q),
+      recent: resultsLog.list(q, req.query.limit ? Number(req.query.limit) : 30),
+    };
+  },
+);
 
 app.get<{ Querystring: { strategy?: string; asset?: string; tf?: string; limit?: string } }>(
   "/api/strategies/live/history",
@@ -226,7 +310,7 @@ app.post<{ Body: { strategy: string; asset: string; tf: string } }>(
     if (!body.strategy || !body.asset || !body.tf) {
       return reply.status(400).send({ error: "strategy, asset, and tf are required" });
     }
-    const result = liveEngine.stop(body.strategy, body.asset, body.tf);
+    const result = await liveEngine.stop(body.strategy, body.asset, body.tf);
     if (!result) return reply.status(404).send({ error: "live runner not found" });
     return result;
   },
@@ -236,13 +320,15 @@ app.register(async (instance) => {
   instance.get("/ws", { websocket: true }, (socket) => {
     const send = () => {
       const frame = getWsFrame(live);
-      if (frame && socket.readyState === 1) {
+      // Skip if the client is backed up, so a slow tab can't buffer us to OOM.
+      if (frame && socket.readyState === 1 && socket.bufferedAmount < 1_000_000) {
         socket.send(JSON.stringify(frame));
       }
     };
     send();
     const interval = setInterval(send, 200);
     socket.on("close", () => clearInterval(interval));
+    socket.on("error", () => clearInterval(interval));
   });
 });
 

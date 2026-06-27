@@ -15,6 +15,24 @@ export interface PlaceOrderResult {
   raw?: unknown;
 }
 
+export interface CancelResult {
+  ok: boolean;
+  canceled: string[];
+  error?: string;
+  raw?: unknown;
+}
+
+export interface OrderStatus {
+  id: string;
+  /** CLOB status, e.g. LIVE / MATCHED / CANCELED / EXPIRED. */
+  status: string;
+  /** Shares filled so far. */
+  matched: number;
+  /** Original order size in shares. */
+  original: number;
+  price: number;
+}
+
 export interface ClobExecutorStatus {
   mode: "paper" | "live";
   ready: boolean;
@@ -228,6 +246,53 @@ export class ClobExecutor {
         return { ok: true, orderId, error: msg };
       }
       return { ok: false, error: msg };
+    }
+  }
+
+  /** Query a single order's fill status. Returns null in paper mode or on error. */
+  async getOrderStatus(orderId: string): Promise<OrderStatus | null> {
+    if (!this.isLive() || !this.client || !orderId) return null;
+    try {
+      const o = await this.client.getOrder(orderId);
+      if (!o) return null;
+      return {
+        id: o.id ?? orderId,
+        status: String(o.status ?? ""),
+        matched: Number(o.size_matched ?? 0),
+        original: Number(o.original_size ?? 0),
+        price: Number(o.price ?? 0),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /** Cancel resting orders by id. Returns ok=false if any failed to cancel. */
+  async cancelOrders(orderIds: string[]): Promise<CancelResult> {
+    const ids = orderIds.filter(Boolean);
+    if (!this.isLive() || !this.client) {
+      return { ok: false, canceled: [], error: "paper mode — nothing to cancel" };
+    }
+    if (!ids.length) return { ok: true, canceled: [] };
+
+    try {
+      const resp = (await this.client.cancelOrders(ids)) as
+        | { canceled?: string[]; not_canceled?: Record<string, string> }
+        | undefined;
+      const canceled = Array.isArray(resp?.canceled) ? resp!.canceled! : ids;
+      const notCanceled =
+        resp?.not_canceled && Object.keys(resp.not_canceled).length
+          ? resp.not_canceled
+          : undefined;
+      return {
+        ok: !notCanceled,
+        canceled,
+        error: notCanceled ? `not canceled: ${JSON.stringify(notCanceled)}` : undefined,
+        raw: resp,
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { ok: false, canceled: [], error: msg };
     }
   }
 }

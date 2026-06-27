@@ -26,6 +26,36 @@ export function ptbDevPath(dataDir: string, asset: Asset, tf: TimeFrame): string
   return join(dataDir, "spread", "cl_ptb_deviation", `${asset}_${tf}.jsonl`);
 }
 
+export function settlementsPath(dataDir: string, asset: Asset, tf: TimeFrame): string {
+  return join(dataDir, "settlements", `${asset}_${tf}.json`);
+}
+
+/**
+ * Polymarket's official settled outcomes (period_start -> up/down), populated by
+ * the `audit:settlement` CLI. When present, the backtest prefers these over the
+ * locally-computed `direction` field, which is only an approximation.
+ */
+export function loadOfficialOutcomes(
+  dataDir: string,
+  asset: Asset,
+  tf: TimeFrame,
+): Map<number, "up" | "down"> {
+  const path = settlementsPath(dataDir, asset, tf);
+  const map = new Map<number, "up" | "down">();
+  if (!existsSync(path)) return map;
+  try {
+    const data = JSON.parse(readFileSync(path, "utf8")) as {
+      outcomes?: Record<string, string>;
+    };
+    for (const [k, v] of Object.entries(data.outcomes ?? {})) {
+      if (v === "up" || v === "down") map.set(Number(k), v);
+    }
+  } catch {
+    // ignore malformed cache
+  }
+  return map;
+}
+
 export function parseEtDateRange(startDate: string, endDate: string): [number, number] {
   const start = DateTime.fromISO(startDate, { zone: "America/New_York" }).startOf("day");
   const end = DateTime.fromISO(endDate, { zone: "America/New_York" }).startOf("day").plus({ days: 1 });
@@ -65,6 +95,15 @@ export function loadPeriods(
       });
     } catch {
       // skip
+    }
+  }
+
+  // Prefer Polymarket's official resolution where we have it.
+  const official = loadOfficialOutcomes(dataDir, asset, tf);
+  if (official.size) {
+    for (const p of out) {
+      const o = official.get(p.period_start);
+      if (o) p.direction = o;
     }
   }
   return out;

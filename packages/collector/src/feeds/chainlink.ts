@@ -104,8 +104,9 @@ export function spawnChainlink(
   writers: Map<Asset, JsonlWriter>,
   log: Logger,
   reconnectFlag: { value: boolean },
+  assets: Asset[] = ALL_ASSETS,
 ): void {
-  void runChainlink(wsUrl, state, writers, log, reconnectFlag);
+  void runChainlink(wsUrl, state, writers, log, reconnectFlag, assets);
 }
 
 async function runChainlink(
@@ -114,6 +115,7 @@ async function runChainlink(
   writers: Map<Asset, JsonlWriter>,
   log: Logger,
   reconnectFlag: { value: boolean },
+  assets: Asset[] = ALL_ASSETS,
 ): Promise<void> {
   let backoff = 1_000;
   while (true) {
@@ -140,20 +142,10 @@ async function runChainlink(
         }
       }, 5_000);
 
-      const silence = setTimeout(() => {
-        log.warn("chainlink: no WS frame — reconnecting");
-        ws.terminate();
-      }, 30_000);
-
-      const resetSilence = () => {
-        clearTimeout(silence);
-        setTimeout(() => ws.terminate(), 30_000);
-      };
-
       ws.on("open", () => {
         backoff = 1_000;
         log.info("chainlink: connected");
-        const subscriptions = ALL_ASSETS.map((asset) => ({
+        const subscriptions = assets.map((asset) => ({
           topic: "crypto_prices_chainlink",
           type: "*",
           filters: JSON.stringify({ symbol: chainlinkSymbol(asset) }),
@@ -162,17 +154,15 @@ async function runChainlink(
       });
 
       ws.on("message", (data) => {
-        resetSilence();
         const text = data.toString();
         if (text.toLowerCase() === "pong") return;
         if (handleText(text, state, writers)) lastTickMs = nowMs();
       });
 
-      ws.on("close", () => { clearInterval(ping); clearTimeout(silence); resolve(); });
+      ws.on("close", () => { clearInterval(ping); resolve(); });
       ws.on("error", (err) => {
         log.warn({ err: err.message }, "chainlink: stream error");
         clearInterval(ping);
-        clearTimeout(silence);
         ws.terminate();
         resolve();
       });

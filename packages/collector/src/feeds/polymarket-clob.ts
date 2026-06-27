@@ -70,6 +70,7 @@ function applyChange(levels: Level[], side: string, price: string, size: string)
 interface ActiveConn {
   periodStart: number;
   abort: AbortController;
+  slug: string;
 }
 
 export function spawnClobManager(
@@ -89,9 +90,14 @@ export function spawnClobManager(
       const existing = active.get(key);
       if (existing?.periodStart === info.period_start_unix) continue;
 
-      existing?.abort.abort();
+      if (existing) {
+        existing.abort.abort();
+        // Drop the previous period's writers so these maps don't grow forever.
+        bookWriters.delete(existing.slug);
+        abWriters.delete(existing.slug);
+      }
       const abort = new AbortController();
-      active.set(key, { periodStart: info.period_start_unix, abort });
+      active.set(key, { periodStart: info.period_start_unix, abort, slug: info.slug });
 
       const tf = tfFolder(info.tf);
       bookWriters.set(info.slug, JsonlWriter.open(

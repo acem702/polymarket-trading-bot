@@ -34,7 +34,10 @@ export class IpcServer {
     const bytes = Buffer.from(`${JSON.stringify(frame)}\n`);
     this.lastFrame = bytes;
     for (const client of this.clients) {
-      if (!client.destroyed) client.write(bytes);
+      if (client.destroyed) continue;
+      // Drop frames for a backed-up consumer instead of buffering unboundedly.
+      if (client.writableLength > 1_000_000) continue;
+      client.write(bytes);
     }
   }
 }

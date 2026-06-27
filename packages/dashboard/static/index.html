@@ -378,6 +378,61 @@
     .strat-live-signals .sig { padding: 2px 0; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
     .strat-live-signals .sig:last-child { border-bottom: none; }
 
+    /* ── Risk safety-net bar ─────────────────────────────────────────── */
+    .risk-bar {
+      display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;
+      padding: 8px 12px; background: var(--panel-2);
+      border-bottom: 1px solid var(--border-strong); flex-shrink: 0;
+    }
+    .risk-bar[hidden] { display: none; }
+    .risk-stat { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+    .risk-stat .rl {
+      font-size: 8px; color: var(--muted); text-transform: uppercase;
+      letter-spacing: 0.4px; font-weight: 600; white-space: nowrap;
+    }
+    .risk-stat .rv {
+      font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums;
+      color: var(--text); white-space: nowrap;
+    }
+    .risk-stat .rv.pos  { color: var(--green); }
+    .risk-stat .rv.neg  { color: var(--red); }
+    .risk-stat .rv.warn { color: var(--binance); }
+
+    .live-pos {
+      font-size: 10px; color: var(--accent); font-weight: 600;
+      font-variant-numeric: tabular-nums; margin-bottom: 4px;
+    }
+    .live-pos[hidden] { display: none; }
+
+    /* ── Paper / live P&L summary ────────────────────────────────────── */
+    .results-section {
+      margin-top: 12px; border: 1px solid var(--border-strong);
+      border-radius: 8px; background: var(--panel); overflow: hidden;
+      box-shadow: 0 2px 8px rgba(37, 99, 235, 0.08);
+    }
+    .results-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      padding: 10px 12px; border-bottom: 1px solid var(--border);
+      background: linear-gradient(135deg, #eff6ff 0%, #ffffff 100%);
+    }
+    .results-head h3 { margin: 0; font-size: 13px; font-weight: 600; color: var(--accent); }
+    .results-summary {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+      padding: 10px 12px;
+    }
+    .results-summary .r-stat { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+    .results-summary .rl {
+      font-size: 8px; color: var(--muted); text-transform: uppercase;
+      letter-spacing: 0.4px; font-weight: 600; white-space: nowrap;
+    }
+    .results-summary .rv {
+      font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text);
+    }
+    .results-summary .rv.pos { color: var(--green); }
+    .results-summary .rv.neg { color: var(--red); }
+    .results-empty { padding: 0 12px 12px; color: var(--muted); font-size: 12px; }
+    .results-empty[hidden] { display: none; }
+
     .live-history-section {
       margin-top: 12px;
       border: 1px solid var(--border);
@@ -512,12 +567,62 @@
     .chart-host > div { position: absolute; inset: 0; }
 
     /* ── Responsive ─────────────────────────────────────────────────── */
+
+    /* Tablet / small laptop: order book + charts side-by-side, strategies below */
+    @media (max-width: 1280px) {
+      main {
+        grid-template-columns: 1fr 1fr;
+        grid-auto-rows: minmax(0, auto);
+        overflow-y: auto;
+      }
+      .left-col { max-height: none; min-height: 280px; }
+      .charts-col { min-height: 420px; }
+      .strategies-section {
+        grid-column: 1 / -1;
+        border-left: none;
+        border-top: 1px solid var(--border-strong);
+        max-height: none;
+      }
+      .hdr-stat { min-width: 96px; }
+    }
+
+    /* Single column */
     @media (max-width: 1100px) {
       main { grid-template-columns: 1fr; grid-template-rows: auto auto auto; overflow-y: auto; }
-      .left-col { border-right: none; border-bottom: 1px solid var(--border); max-height: 40vh; }
+      .left-col { border-right: none; border-bottom: 1px solid var(--border); max-height: 44vh; min-height: 0; }
       .charts-col { border-right: none; border-bottom: 1px solid var(--border); min-height: 360px; }
       .chart-panel { min-height: 180px; }
-      .strategies-section { border-left: none; max-height: none; }
+      .strategies-section { border-left: none; border-top: none; max-height: none; }
+    }
+
+    /* Phones / narrow: let the header stats scroll, pickers go full width */
+    @media (max-width: 720px) {
+      body { font-size: 12px; }
+      header.top { padding: 8px 10px; gap: 8px; }
+      header.top h1 { width: 100%; }
+      .selector-group { flex-wrap: wrap; }
+      .hdr-stats {
+        margin-left: 0; width: 100%;
+        flex-wrap: nowrap; overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 3px;
+      }
+      .hdr-stat { min-width: 96px; flex: 0 0 auto; }
+      .slug-bar { flex-wrap: wrap; gap: 8px; padding: 8px 10px; }
+      .market-picker { flex: 1 1 100%; }
+      .market-picker select { max-width: none; }
+      .date-picker { flex: 1 1 auto; }
+      .strat-fields { grid-template-columns: 1fr; }
+      .strat-summary { grid-template-columns: repeat(2, 1fr); }
+      .risk-bar { grid-template-columns: repeat(3, 1fr); }
+      .left-col { max-height: 50vh; }
+    }
+
+    /* Very small phones */
+    @media (max-width: 480px) {
+      .strategies-toolbar .date-fields { flex-direction: column; align-items: stretch; }
+      .strategies-toolbar label { justify-content: space-between; }
+      .strat-actions { flex-direction: column; }
     }
   </style>
 </head>
@@ -706,6 +811,15 @@
           </div>
         </div>
       </div>
+
+      <div class="risk-bar" id="risk-bar" hidden>
+        <div class="risk-stat"><span class="rl">Daily spend</span><span class="rv" id="risk-spend">—</span></div>
+        <div class="risk-stat"><span class="rl">Daily P&amp;L</span><span class="rv" id="risk-pnl">—</span></div>
+        <div class="risk-stat"><span class="rl">Open exp.</span><span class="rv" id="risk-exp">—</span></div>
+        <div class="risk-stat"><span class="rl">Positions</span><span class="rv" id="risk-pos">—</span></div>
+        <div class="risk-stat"><span class="rl">Loss left</span><span class="rv" id="risk-loss">—</span></div>
+      </div>
+
       <div class="strategies-grid">
 
         <div class="strat-card active" data-strat="dual_45c">
@@ -732,6 +846,7 @@
             <div class="strat-live-panel" data-live-panel="dual_45c" hidden>
               <span class="live-badge off" data-live-badge="dual_45c">OFF</span>
               <div class="live-msg" data-live-msg="dual_45c">—</div>
+              <div class="live-pos" data-live-pos="dual_45c" hidden></div>
               <div class="strat-live-signals" data-live-signals="dual_45c"></div>
             </div>
             <div class="strat-summary" data-summary="dual_45c" hidden>
@@ -782,6 +897,7 @@
             <div class="strat-live-panel" data-live-panel="momentum_90c" hidden>
               <span class="live-badge off" data-live-badge="momentum_90c">OFF</span>
               <div class="live-msg" data-live-msg="momentum_90c">—</div>
+              <div class="live-pos" data-live-pos="momentum_90c" hidden></div>
               <div class="strat-live-signals" data-live-signals="momentum_90c"></div>
             </div>
             <div class="strat-summary" data-summary="momentum_90c" hidden>
@@ -828,6 +944,7 @@
             <div class="strat-live-panel" data-live-panel="ptb_deviation" hidden>
               <span class="live-badge off" data-live-badge="ptb_deviation">OFF</span>
               <div class="live-msg" data-live-msg="ptb_deviation">—</div>
+              <div class="live-pos" data-live-pos="ptb_deviation" hidden></div>
               <div class="strat-live-signals" data-live-signals="ptb_deviation"></div>
             </div>
             <div class="strat-summary" data-summary="ptb_deviation" hidden>
@@ -842,6 +959,22 @@
           </div>
         </div>
 
+      </div>
+
+      <div class="results-section" id="results-section">
+        <div class="results-head">
+          <h3>Paper P&amp;L</h3>
+          <span class="ctx" id="results-ctx">BTC · 5min</span>
+        </div>
+        <div class="results-summary">
+          <div class="r-stat"><span class="rl">Settled</span><span class="rv" id="res-settled">—</span></div>
+          <div class="r-stat"><span class="rl">Arb fills</span><span class="rv" id="res-arb">—</span></div>
+          <div class="r-stat"><span class="rl">Single-leg</span><span class="rv" id="res-single">—</span></div>
+          <div class="r-stat"><span class="rl">Win rate</span><span class="rv" id="res-winrate">—</span></div>
+          <div class="r-stat"><span class="rl">Arb P&amp;L</span><span class="rv" id="res-arbpnl">—</span></div>
+          <div class="r-stat"><span class="rl">Total P&amp;L</span><span class="rv" id="res-total">—</span></div>
+        </div>
+        <div class="results-empty" id="results-empty">No settled paper periods yet</div>
       </div>
 
       <div class="live-history-section" id="live-history-section">
@@ -874,6 +1007,36 @@
 
 <script>
 "use strict";
+
+// ── API token shim (D1) ──────────────────────────────────────────
+// If the dashboard requires a token, open it once as  <url>/#token=YOURTOKEN
+// — it's saved to localStorage and auto-attached to every /api call and the WS.
+(function () {
+  const KEY = 'pp_token';
+  const m = location.hash.match(/token=([^&]+)/);
+  if (m) {
+    localStorage.setItem(KEY, decodeURIComponent(m[1]));
+    history.replaceState(null, '', location.pathname + location.search);
+  }
+  const token = () => localStorage.getItem(KEY) || '';
+  const _fetch = window.fetch.bind(window);
+  window.fetch = (input, init = {}) => {
+    const t = token();
+    if (t && typeof input === 'string' && input.startsWith('/api')) {
+      init = { ...init, headers: { ...(init.headers || {}), Authorization: 'Bearer ' + t } };
+    }
+    return _fetch(input, init);
+  };
+  const _WS = window.WebSocket;
+  window.WebSocket = function (url, protocols) {
+    const t = token();
+    if (t && typeof url === 'string' && url.includes('/ws')) {
+      url += (url.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(t);
+    }
+    return new _WS(url, protocols);
+  };
+  window.WebSocket.prototype = _WS.prototype;
+})();
 
 // ─────────────────────────────────────────────────────────
 //  State
@@ -1981,6 +2144,21 @@ function renderLivePanel(strategy, state) {
   btn.textContent = active ? 'Stop live' : 'Live trading';
   btn.classList.toggle('active', !!active);
 
+  const posEl = document.querySelector(`[data-live-pos="${strategy}"]`);
+  if (posEl) {
+    const p = state?.position;
+    const filled = p ? (p.yes_shares + p.no_shares) : 0;
+    if (p && filled > 0) {
+      const parts = [];
+      if (p.yes_shares > 0) parts.push(`YES ${p.yes_shares} @ $${p.yes_cost.toFixed(2)}`);
+      if (p.no_shares > 0)  parts.push(`NO ${p.no_shares} @ $${p.no_cost.toFixed(2)}`);
+      posEl.textContent = 'Filled: ' + parts.join('  ·  ');
+      posEl.hidden = false;
+    } else {
+      posEl.hidden = true;
+    }
+  }
+
   const signals = state?.signals || [];
   if (!signals.length) {
     sigBox.innerHTML = '<div style="color:var(--muted)">No signals yet</div>';
@@ -2004,6 +2182,74 @@ async function pollLiveStatus() {
     }
   } catch (_) {}
   pollLiveHistory();
+  pollRisk();
+  pollResults();
+}
+
+const fmtSigned = (v) => (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
+
+function renderRisk(snap) {
+  const bar = document.getElementById('risk-bar');
+  if (!bar || !snap || !snap.limits) return;
+  const L = snap.limits;
+  const set = (id, text, cls) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = text;
+    el.className = 'rv' + (cls ? ' ' + cls : '');
+  };
+  const spendNear = snap.daily_spend_usd >= L.max_daily_spend_usd * 0.8;
+  set('risk-spend', `$${snap.daily_spend_usd.toFixed(2)} / $${L.max_daily_spend_usd}`, spendNear ? 'warn' : '');
+  set('risk-pnl', fmtSigned(snap.daily_pnl_usd),
+    snap.daily_pnl_usd > 0 ? 'pos' : snap.daily_pnl_usd < 0 ? 'neg' : '');
+  set('risk-exp', `$${snap.open_exposure_usd.toFixed(2)} / $${L.max_open_exposure_usd}`, '');
+  set('risk-pos', `${snap.open_positions} / ${L.max_concurrent_positions}`, '');
+  const lossLow = snap.daily_loss_remaining_usd <= L.max_daily_loss_usd * 0.25;
+  set('risk-loss', `$${snap.daily_loss_remaining_usd.toFixed(2)} left`, lossLow ? 'neg' : '');
+  bar.hidden = false;
+}
+
+async function pollRisk() {
+  try {
+    const res = await fetch('/api/risk');
+    if (!res.ok) return;
+    renderRisk(await res.json());
+  } catch (_) {}
+}
+
+function renderResults(data) {
+  const s = data && data.summary;
+  const empty = document.getElementById('results-empty');
+  const ctx = document.getElementById('results-ctx');
+  if (ctx) ctx.textContent = `${selectedCoin} · ${TF_LABEL[selectedTF]}`;
+  const set = (id, t, cls) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = t;
+    el.className = 'rv' + (cls ? ' ' + cls : '');
+  };
+  if (!s || s.settled === 0) {
+    ['res-settled','res-arb','res-single'].forEach(id => set(id, '0'));
+    ['res-winrate','res-arbpnl','res-total'].forEach(id => set(id, '—'));
+    if (empty) empty.hidden = false;
+    return;
+  }
+  if (empty) empty.hidden = true;
+  set('res-settled', String(s.settled));
+  set('res-arb', String(s.arb_count));
+  set('res-single', String(s.single_count));
+  set('res-winrate', (s.win_rate * 100).toFixed(0) + '%');
+  set('res-arbpnl', fmtSigned(s.arb_pnl), s.arb_pnl >= 0 ? 'pos' : 'neg');
+  set('res-total', fmtSigned(s.total_pnl), s.total_pnl >= 0 ? 'pos' : 'neg');
+}
+
+async function pollResults() {
+  try {
+    const q = new URLSearchParams({ asset: selectedCoin, tf: selectedTF, mode: 'paper' });
+    const res = await fetch(`/api/strategies/results?${q}`);
+    if (!res.ok) return;
+    renderResults(await res.json());
+  } catch (_) {}
 }
 
 const STRAT_LABELS = {

@@ -104,11 +104,12 @@ for (const tf of ALL_TIMEFRAMES) {
 }
 
 const latestSpreadPath = `${cc.data_dir}/spread/latest.json`;
-const marketCache = spawnMarketResolve(cc.gamma_url, cc.clob_url);
+const marketCache = spawnMarketResolve(cc.gamma_url, cc.clob_url, cc.assets, cc.timeframes);
+log.info({ assets: cc.assets, timeframes: cc.timeframes }, "collector subscription scope");
 const chainlinkReconnect = { value: false };
 
-spawnChainlink(cc.chainlink_ws_url, state, chainlinkWriters, log, chainlinkReconnect);
-spawnBinance(cc.binance_ws_url, state, binanceWriters, log);
+spawnChainlink(cc.chainlink_ws_url, state, chainlinkWriters, log, chainlinkReconnect, cc.assets);
+spawnBinance(cc.binance_ws_url, state, binanceWriters, log, cc.assets);
 spawnClobManager(marketCache, state, cc.data_dir, log);
 
 setInterval(() => {
@@ -134,6 +135,15 @@ setInterval(() => {
     if ((now - ts) / 1000 > 45) chainlinkReconnect.value = true;
   }
 }, 15_000);
+
+// Heap heartbeat for long unattended runs.
+setInterval(() => {
+  const mem = process.memoryUsage();
+  log.info(
+    { rss_mb: Math.round(mem.rss / 1048576), heap_mb: Math.round(mem.heapUsed / 1048576) },
+    "health",
+  );
+}, 60_000);
 
 log.info("collector running — press Ctrl-C to stop");
 process.on("SIGINT", () => {

@@ -107,6 +107,9 @@ interface GammaMarket {
   active?: boolean;
   closed?: boolean;
   startPrice?: string;
+  outcomes?: string;
+  outcomePrices?: string;
+  umaResolutionStatus?: string;
 }
 
 interface ClobMarket {
@@ -197,6 +200,72 @@ export async function resolveMarket(
   };
 }
 
+export type SettledOutcome = "up" | "down";
+
+export interface SettlementResult {
+  outcome: SettledOutcome;
+  outcomes: string[];
+  prices: number[];
+}
+
+/** Parse a Gamma stringified JSON array (e.g. `"[\"Up\", \"Down\"]"`). */
+function parseGammaArray(raw: string | undefined): string[] | null {
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw);
+    return Array.isArray(v) ? v.map((x) => String(x)) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetch Polymarket's OFFICIAL settled outcome for a slug (the ground truth a
+ * market resolves to), independent of any locally-computed direction.
+ * Returns null when the market is not found, not yet resolved, or tied.
+ */
+export async function fetchSettledOutcome(
+  gammaUrl: string,
+  slug: string,
+): Promise<SettlementResult | null> {
+  const url = `${gammaUrl.replace(/\/$/, "")}/events/slug/${slug}`;
+  // Hard timeout: without it a single stalled request (flaky link) would hang
+  // the settlement reconciler forever, since it skips overlapping runs.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  let event: GammaEvent;
+  try {
+    const resp = await fetch(url, { signal: controller.signal });
+    if (!resp.ok) return null;
+    event = (await resp.json()) as GammaEvent;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+
+  for (const m of event.markets ?? []) {
+    // NB: Polymarket leaves `closed: false` on these short up/down markets even
+    // after the outcome is locked, so we resolve on a decisive outcomePrices
+    // value (≥0.99) rather than the `closed` flag. The reconciler only queries
+    // already-ended periods, so a 0.99+ price is the final result, not a transient.
+    const outcomes = parseGammaArray(m.outcomes);
+    const prices = parseGammaArray(m.outcomePrices)?.map(Number);
+    if (!outcomes || !prices || outcomes.length !== prices.length) continue;
+
+    let winIdx = -1;
+    for (let i = 0; i < prices.length; i++) {
+      if (Number.isFinite(prices[i]!) && prices[i]! >= 0.99) winIdx = i;
+    }
+    if (winIdx < 0) continue; // not yet decided / still trading near 50-50
+
+    const label = outcomes[winIdx]!.toUpperCase();
+    if (label === "UP" || label === "YES") return { outcome: "up", outcomes, prices };
+    if (label === "DOWN" || label === "NO") return { outcome: "down", outcomes, prices };
+  }
+  return null;
+}
+
 export type MarketCache = Map<string, MarketInfo>;
 
 export function marketCacheKey(asset: Asset, tf: TimeFrame): string {
@@ -211,9 +280,11 @@ export async function refreshAllMarkets(
   cache: MarketCache,
   gammaUrl: string,
   clobUrl: string,
+  assets: Asset[] = ALL_ASSETS,
+  timeframes: TimeFrame[] = ALL_TIMEFRAMES,
 ): Promise<void> {
-  for (const asset of ALL_ASSETS) {
-    for (const tf of ALL_TIMEFRAMES) {
+  for (const asset of assets) {
+    for (const tf of timeframes) {
       const periodStart = currentPeriodStart(tf);
       try {
         const info = await resolveMarket(gammaUrl, clobUrl, asset, tf, periodStart);
@@ -230,9 +301,11 @@ export function spawnMarketCacheRefresh(
   gammaUrl: string,
   clobUrl: string,
   intervalSecs = 30,
+  assets: Asset[] = ALL_ASSETS,
+  timeframes: TimeFrame[] = ALL_TIMEFRAMES,
 ): void {
   const tick = async () => {
-    await refreshAllMarkets(cache, gammaUrl, clobUrl);
+    await refreshAllMarkets(cache, gammaUrl, clobUrl, assets, timeframes);
     setTimeout(tick, intervalSecs * 1000);
   };
   void tick();

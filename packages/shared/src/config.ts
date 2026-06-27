@@ -1,6 +1,14 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import dotenv from "dotenv";
+import {
+  ALL_ASSETS,
+  ALL_TIMEFRAMES,
+  parseAsset,
+  parseTimeFrame,
+  type Asset,
+  type TimeFrame,
+} from "./types.js";
 
 /** Platform-specific default IPC endpoint for collector ↔ dashboard. */
 export function defaultIpcPath(): string {
@@ -33,12 +41,17 @@ export interface CollectorConfig {
   clob_url: string;
   ipc_path: string;
   data_dir: string;
+  /** Which assets/timeframes to stream. Fewer = far less bandwidth. */
+  assets: Asset[];
+  timeframes: TimeFrame[];
 }
 
 export interface DashboardConfig {
   bind: string;
   ipc_path: string;
   data_dir: string;
+  /** Shared bearer token required on /api + /ws. Empty = auth disabled (local). */
+  token: string;
 }
 
 export interface Dual45cStrategyConfig {
@@ -63,6 +76,22 @@ export interface StrategiesConfig {
   ptb_deviation: PtbDeviationStrategyConfig;
 }
 
+/** Live-trading risk limits. All caps are in USD of order cost (price × shares). */
+export interface RiskConfig {
+  /** Reject any single order leg whose cost exceeds this. */
+  max_order_usd: number;
+  /** Reject if total resting/open exposure would exceed this. */
+  max_open_exposure_usd: number;
+  /** Hard daily budget (resets at ET midnight). Once spent, no new orders that day. */
+  max_daily_spend_usd: number;
+  /** Realized-loss stop-loss: halt new orders for the day once losses reach this. */
+  max_daily_loss_usd: number;
+  /** Reject if the number of distinct open positions would exceed this. */
+  max_concurrent_positions: number;
+  /** Reject if exposure on a single market (asset_tf_period) would exceed this. */
+  max_position_per_market_usd: number;
+}
+
 /** Polymarket CLOB credentials for live order execution. */
 export interface TradingConfig {
   /** When true and private key is set, live mode posts real CLOB orders. */
@@ -81,6 +110,7 @@ export interface BotConfig {
   dashboard: DashboardConfig;
   strategies: StrategiesConfig;
   trading: TradingConfig;
+  risk: RiskConfig;
 }
 
 const DEFAULTS: BotConfig = {
@@ -91,11 +121,14 @@ const DEFAULTS: BotConfig = {
     clob_url: "https://clob.polymarket.com",
     ipc_path: defaultIpcPath(),
     data_dir: "./data",
+    assets: ALL_ASSETS,
+    timeframes: ALL_TIMEFRAMES,
   },
   dashboard: {
     bind: "0.0.0.0:3003",
     ipc_path: defaultIpcPath(),
     data_dir: "./data",
+    token: "",
   },
   strategies: {
     shares: 5,
@@ -119,6 +152,14 @@ const DEFAULTS: BotConfig = {
     clob_url: "https://clob.polymarket.com",
     gamma_url: "https://gamma-api.polymarket.com",
   },
+  risk: {
+    max_order_usd: 5,
+    max_open_exposure_usd: 20,
+    max_daily_spend_usd: 25,
+    max_daily_loss_usd: 10,
+    max_concurrent_positions: 4,
+    max_position_per_market_usd: 10,
+  },
 };
 
 function envStr(key: string, fallback: string): string {
@@ -131,6 +172,25 @@ function envNum(key: string, fallback: number): number {
   if (!raw) return fallback;
   const n = Number(raw);
   return Number.isFinite(n) ? n : fallback;
+}
+
+/** Parse `COLLECTOR_ASSETS=BTC,ETH` → valid assets, or null if unset/empty. */
+function parseAssetCsv(raw: string | undefined): Asset[] | null {
+  if (!raw?.trim()) return null;
+  const list = raw
+    .split(",")
+    .map((s) => parseAsset(s.trim()))
+    .filter((a): a is Asset => a !== null);
+  return list.length ? list : null;
+}
+
+function parseTfCsv(raw: string | undefined): TimeFrame[] | null {
+  if (!raw?.trim()) return null;
+  const list = raw
+    .split(",")
+    .map((s) => parseTimeFrame(s.trim()))
+    .filter((t): t is TimeFrame => t !== null);
+  return list.length ? list : null;
 }
 
 function envBool(key: string, fallback: boolean): boolean {
@@ -156,11 +216,14 @@ function buildConfig(): BotConfig {
       clob_url: envStr("CLOB_URL", DEFAULTS.collector.clob_url),
       ipc_path: ipcPath,
       data_dir: dataDir,
+      assets: parseAssetCsv(process.env.COLLECTOR_ASSETS) ?? ALL_ASSETS,
+      timeframes: parseTfCsv(process.env.COLLECTOR_TIMEFRAMES) ?? ALL_TIMEFRAMES,
     },
     dashboard: {
       bind: envStr("DASHBOARD_BIND", DEFAULTS.dashboard.bind),
       ipc_path: ipcPath,
       data_dir: dataDir,
+      token: envStr("DASHBOARD_TOKEN", DEFAULTS.dashboard.token),
     },
     strategies: {
       shares: envNum("STRATEGY_SHARES", DEFAULTS.strategies.shares),
@@ -193,6 +256,23 @@ function buildConfig(): BotConfig {
       chain_id: envNum("POLYMARKET_CHAIN_ID", DEFAULTS.trading.chain_id),
       clob_url: envStr("CLOB_URL", DEFAULTS.trading.clob_url),
       gamma_url: envStr("GAMMA_URL", DEFAULTS.trading.gamma_url),
+    },
+    risk: {
+      max_order_usd: envNum("RISK_MAX_ORDER_USD", DEFAULTS.risk.max_order_usd),
+      max_open_exposure_usd: envNum(
+        "RISK_MAX_OPEN_EXPOSURE_USD",
+        DEFAULTS.risk.max_open_exposure_usd,
+      ),
+      max_daily_spend_usd: envNum("RISK_MAX_DAILY_SPEND_USD", DEFAULTS.risk.max_daily_spend_usd),
+      max_daily_loss_usd: envNum("RISK_MAX_DAILY_LOSS_USD", DEFAULTS.risk.max_daily_loss_usd),
+      max_concurrent_positions: envNum(
+        "RISK_MAX_CONCURRENT_POSITIONS",
+        DEFAULTS.risk.max_concurrent_positions,
+      ),
+      max_position_per_market_usd: envNum(
+        "RISK_MAX_POSITION_PER_MARKET_USD",
+        DEFAULTS.risk.max_position_per_market_usd,
+      ),
     },
   };
 }

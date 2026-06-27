@@ -30,8 +30,10 @@ export function spawnBinance(
   state: CollectorState,
   writers: Map<Asset, JsonlWriter>,
   log: Logger,
+  assets: Asset[] = BINANCE_ASSETS,
 ): void {
   for (const asset of BINANCE_ASSETS) {
+    if (!assets.includes(asset)) continue;
     void runBinanceAsset(wsBaseUrl, asset, state, writers, log);
   }
 }

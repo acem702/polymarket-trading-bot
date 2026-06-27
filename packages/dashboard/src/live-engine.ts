@@ -1,5 +1,9 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import {
+  buildSlugFor,
   currentPeriodStart,
+  fetchSettledOutcome,
   marketKey,
   priceKey,
   resolveMarket,
@@ -9,8 +13,11 @@ import {
   type TradingConfig,
 } from "@pmt/shared";
 import type { LiveState } from "./api.js";
-import type { ClobExecutor } from "./clob-executor.js";
+import type { ClobExecutor, PlaceOrderResult } from "./clob-executor.js";
+import type { OrderStatus } from "./clob-executor.js";
 import type { LiveHistoryQuery, LiveTradeHistory, LiveTradeRecord } from "./live-history.js";
+import type { RiskManager, RiskSnapshot } from "./risk-manager.js";
+import type { ResultsLog } from "./results-log.js";
 import type { StrategyRunRequest } from "./strategies.js";
 
 export type LiveStrategyId = "dual_45c" | "momentum_90c" | "ptb_deviation";
@@ -25,6 +32,13 @@ export interface LiveSignal {
   order_error?: string;
 }
 
+export interface LivePosition {
+  yes_shares: number;
+  yes_cost: number;
+  no_shares: number;
+  no_cost: number;
+}
+
 export interface LiveRunnerPublic {
   strategy: LiveStrategyId;
   asset: Asset;
@@ -37,9 +51,32 @@ export interface LiveRunnerPublic {
   last_tick_ms: number;
   status: string;
   mode: "paper" | "live";
+  position: LivePosition;
 }
 
-interface LiveRunner extends LiveRunnerPublic {
+/** Per-order fill-tracking record. */
+interface OrderRec {
+  side: "yes" | "no";
+  price: number;
+  original: number;
+  matched: number;
+  status: string;
+  terminal: boolean;
+  reconciled: boolean;
+}
+
+/** A filled period awaiting Polymarket settlement. */
+interface PendingSettlement {
+  strategy: LiveStrategyId;
+  asset: Asset;
+  tf: TimeFrame;
+  period_start: number;
+  slug: string;
+  position: LivePosition;
+  first_ms: number;
+}
+
+interface LiveRunner extends Omit<LiveRunnerPublic, "position"> {
   yes_filled?: boolean;
   no_filled?: boolean;
   dual_orders_placed?: boolean;
@@ -53,6 +90,12 @@ interface LiveRunner extends LiveRunnerPublic {
   ptb_fired?: boolean;
   yes_token_id?: string;
   no_token_id?: string;
+  risk_blocked?: boolean;
+  risk_reason?: string;
+  /** Live order ids resting this period — cancelled on stop / period-roll. */
+  open_order_ids?: string[];
+  /** All orders placed this period, keyed by id, for fill tracking. */
+  orders?: Record<string, OrderRec>;
 }
 
 const RECORD_STEP: Record<string, number> = {
@@ -69,17 +112,54 @@ function runnerKey(strategy: string, asset: string, tf: string): string {
   return `${strategy}:${asset}:${tf}`;
 }
 
+const round2 = (n: number): number => Math.round(n * 100) / 100;
+
 export class LiveStrategyEngine {
   private runners = new Map<string, LiveRunner>();
+  private pending: PendingSettlement[] = [];
 
   constructor(
     private readonly trading: TradingConfig,
     private readonly executor: ClobExecutor | null = null,
     private readonly history: LiveTradeHistory | null = null,
-  ) {}
+    private readonly risk: RiskManager | null = null,
+    private readonly results: ResultsLog | null = null,
+    private readonly pendingPath: string | null = null,
+  ) {
+    this.loadPending();
+  }
+
+  private loadPending(): void {
+    if (!this.pendingPath || !existsSync(this.pendingPath)) return;
+    try {
+      const data = JSON.parse(readFileSync(this.pendingPath, "utf8")) as PendingSettlement[];
+      if (Array.isArray(data)) this.pending = data;
+    } catch {
+      // ignore corrupt file
+    }
+  }
+
+  private persistPending(): void {
+    if (!this.pendingPath) return;
+    try {
+      mkdirSync(dirname(this.pendingPath), { recursive: true });
+      writeFileSync(this.pendingPath, JSON.stringify(this.pending));
+    } catch {
+      // non-fatal
+    }
+  }
 
   private orderMode(): "paper" | "live" {
     return this.executor?.isLive() ? "live" : "paper";
+  }
+
+  /** Per-period market identity used for risk bucketing. */
+  private marketId(runner: LiveRunner): string {
+    return `${runner.asset}_${runner.tf}@${runner.period_start}`;
+  }
+
+  riskSnapshot(): RiskSnapshot | null {
+    return this.risk?.snapshot() ?? null;
   }
 
   tradeHistory(query: LiveHistoryQuery = {}): LiveTradeRecord[] {
@@ -174,18 +254,24 @@ export class LiveStrategyEngine {
       best_up: 0,
       best_down: 0,
       ptb_fired: false,
+      open_order_ids: [],
+      orders: {},
     };
     this.runners.set(key, runner);
     void this.refreshTokens(runner);
     return this.publicView(runner);
   }
 
-  stop(strategy: string, asset: string, tf: string): LiveRunnerPublic | null {
+  async stop(strategy: string, asset: string, tf: string): Promise<LiveRunnerPublic | null> {
     const key = runnerKey(strategy, asset, tf);
     const r = this.runners.get(key);
     if (!r) return null;
     r.active = false;
+    const ids = r.open_order_ids ?? [];
+    if (ids.length) await this.cancelOrderIds(ids, r, "stop");
+    r.open_order_ids = [];
     r.status = "stopped";
+    this.risk?.releaseOpen(key);
     this.runners.delete(key);
     return this.publicView(r);
   }
@@ -212,6 +298,7 @@ export class LiveStrategyEngine {
       last_tick_ms: r.last_tick_ms,
       status: r.status,
       mode,
+      position: this.computePosition(r),
     };
   }
 
@@ -259,21 +346,49 @@ export class LiveStrategyEngine {
     const nowSec = Math.floor(Date.now() / 1000);
     const restSecs = Math.max(1, runner.period_start + periodSecs - nowSec);
 
+    const key = runnerKey(runner.strategy, runner.asset, runner.tf);
+    const market = this.marketId(runner);
+    const legCost = limit * shares;
+
+    // Risk gating only blocks live orders. Paper tracks (commits per simulated
+    // fill below) but never halts, so a multi-day analysis run keeps collecting.
+    if (this.risk && this.executor?.isLive()) {
+      const decision = this.risk.check(key, market, [legCost, legCost]);
+      if (!decision.allowed) {
+        runner.dual_orders_placing = false;
+        runner.dual_orders_placed = true;
+        runner.risk_blocked = true;
+        runner.risk_reason = decision.reason;
+        this.pushSignal(runner, {
+          ts_ms: Date.now(),
+          period_start: runner.period_start,
+          side: "both",
+          entry: limit,
+          message: `BLOCKED by risk — ${decision.reason}`,
+          order_error: `risk: ${decision.reason}`,
+        });
+        runner.status = `risk-blocked — ${decision.reason}`;
+        return;
+      }
+      this.risk.commit(key, market, legCost * 2); // live reserves capital on placement
+    }
+
+    const tag = this.executor?.isLive() ? "LIVE" : "PAPER";
     const signal: LiveSignal = {
       ts_ms: Date.now(),
       period_start: runner.period_start,
       side: "both",
       entry: limit,
-      message: `LIVE open dual — UP+DOWN limit BUY @ ${limit.toFixed(2)} × ${shares} (GTD ${restSecs}s)`,
+      message: `${tag} open dual — UP+DOWN limit BUY @ ${limit.toFixed(2)} × ${shares} (GTD ${restSecs}s)`,
     };
     this.pushSignal(runner, signal);
 
     if (!this.executor?.isLive()) {
+      // Paper: both legs "rest" at `limit`. Fills are simulated per-tick against
+      // the real best-ask feed in evaluate() → simulatePaperDualFills().
       runner.dual_orders_placed = true;
       runner.dual_orders_placing = false;
-      runner.status = "live — paper dual limits (not sent)";
-      this.recordTrade(runner, "yes", limit, shares, { ok: false, error: "paper mode" });
-      this.recordTrade(runner, "no", limit, shares, { ok: false, error: "paper mode" });
+      runner.status = `paper — resting dual UP+DOWN @ ${limit.toFixed(2)}`;
       return;
     }
 
@@ -288,6 +403,7 @@ export class LiveStrategyEngine {
 
       if (yesResult.ok && yesResult.orderId) {
         runner.yes_order_id = yesResult.orderId;
+        this.registerOrder(runner, yesResult.orderId, "yes", limit, shares);
         signal.message += ` [UP ${yesResult.orderId}]`;
       } else if (yesResult.error) {
         signal.order_error = yesResult.error;
@@ -296,6 +412,7 @@ export class LiveStrategyEngine {
 
       if (noResult.ok && noResult.orderId) {
         runner.no_order_id = noResult.orderId;
+        this.registerOrder(runner, noResult.orderId, "no", limit, shares);
         signal.message += ` [DOWN ${noResult.orderId}]`;
       } else if (noResult.error) {
         const downErr = noResult.error;
@@ -311,8 +428,278 @@ export class LiveStrategyEngine {
       } else {
         runner.status = "live — dual limit placement failed";
       }
+
+      // Refund committed capital for any leg that failed to post.
+      if (this.risk) {
+        const failed = (runner.yes_order_id ? 0 : 1) + (runner.no_order_id ? 0 : 1);
+        if (failed > 0) this.risk.refund(key, legCost * failed);
+      }
     } finally {
       runner.dual_orders_placing = false;
+    }
+  }
+
+  /** Cancel a snapshot of resting order ids (no-op in paper mode). */
+  private async cancelOrderIds(
+    ids: string[],
+    runner: LiveRunner,
+    context: string,
+  ): Promise<void> {
+    const live = ids.filter(Boolean);
+    if (!live.length || !this.executor?.isLive()) return;
+    const res = await this.executor.cancelOrders(live);
+    this.pushSignal(runner, {
+      ts_ms: Date.now(),
+      period_start: runner.period_start,
+      side: "both",
+      entry: 0,
+      message: res.ok
+        ? `${context} — cancelled ${res.canceled.length} resting order(s)`
+        : `${context} — cancel error: ${res.error}`,
+      order_error: res.ok ? undefined : res.error,
+    });
+  }
+
+  /** Track a freshly-posted live order for fill polling. */
+  private registerOrder(
+    runner: LiveRunner,
+    orderId: string,
+    side: "yes" | "no",
+    price: number,
+    shares: number,
+  ): void {
+    (runner.open_order_ids ??= []).push(orderId);
+    (runner.orders ??= {})[orderId] = {
+      side,
+      price,
+      original: shares,
+      matched: 0,
+      status: "LIVE",
+      terminal: false,
+      reconciled: false,
+    };
+  }
+
+  /**
+   * Paper fill model for dual_45c: a resting BUY limit at `limit` fills the first
+   * time that side's real best-ask is in (0, limit] during the period. Records
+   * the fill, commits the spent capital to risk, and builds the position so the
+   * period settles against the official outcome like a live fill would.
+   */
+  private simulatePaperDualFills(
+    runner: LiveRunner,
+    yesAsk: number,
+    noAsk: number,
+    limit: number,
+    shares: number,
+  ): void {
+    if (!runner.dual_orders_placed) return;
+    const key = runnerKey(runner.strategy, runner.asset, runner.tf);
+    const market = this.marketId(runner);
+
+    const tryFill = (side: "yes" | "no", ask: number): void => {
+      const id = `paper-${side}-${runner.period_start}`;
+      if (runner.orders?.[id]) return; // already filled this period
+      if (!(ask > 0 && ask <= limit)) return;
+      (runner.orders ??= {})[id] = {
+        side,
+        price: ask,
+        original: shares,
+        matched: shares,
+        status: "FILLED",
+        terminal: true,
+        reconciled: true,
+      };
+      this.risk?.commit(key, market, ask * shares);
+      this.recordTrade(runner, side, ask, shares, { ok: true });
+      this.pushSignal(runner, {
+        ts_ms: Date.now(),
+        period_start: runner.period_start,
+        side,
+        entry: ask,
+        message: `PAPER FILL ${side.toUpperCase()} ${shares} @ ${ask.toFixed(2)}`,
+      });
+    };
+
+    tryFill("yes", yesAsk);
+    tryFill("no", noAsk);
+
+    const yf = !!runner.orders?.[`paper-yes-${runner.period_start}`];
+    const nf = !!runner.orders?.[`paper-no-${runner.period_start}`];
+    runner.status = yf && nf
+      ? "paper — both legs filled (arb locked)"
+      : yf
+        ? "paper — UP filled, waiting for DOWN"
+        : nf
+          ? "paper — DOWN filled, waiting for UP"
+          : `paper — resting dual @ ${limit.toFixed(2)} (no fills yet)`;
+  }
+
+  private computePosition(runner: LiveRunner): LivePosition {
+    const pos: LivePosition = { yes_shares: 0, yes_cost: 0, no_shares: 0, no_cost: 0 };
+    for (const rec of Object.values(runner.orders ?? {})) {
+      if (rec.matched <= 0) continue;
+      const cost = rec.matched * rec.price;
+      if (rec.side === "yes") {
+        pos.yes_shares += rec.matched;
+        pos.yes_cost += cost;
+      } else {
+        pos.no_shares += rec.matched;
+        pos.no_cost += cost;
+      }
+    }
+    return pos;
+  }
+
+  /** Poll fill status of every active runner's non-terminal orders. */
+  async pollFills(): Promise<void> {
+    if (!this.executor?.isLive()) return;
+    for (const runner of this.runners.values()) {
+      if (!runner.active || !runner.orders) continue;
+      for (const [id, rec] of Object.entries(runner.orders)) {
+        if (rec.terminal) continue;
+        const st = await this.executor.getOrderStatus(id);
+        if (!st) continue;
+        this.applyOrderStatus(runner, id, rec, st);
+      }
+    }
+  }
+
+  private applyOrderStatus(
+    runner: LiveRunner,
+    id: string,
+    rec: OrderRec,
+    st: OrderStatus,
+  ): void {
+    const prevMatched = rec.matched;
+    rec.matched = Math.max(rec.matched, st.matched);
+    rec.status = st.status;
+
+    const filledDelta = rec.matched - prevMatched;
+    if (filledDelta > 0) {
+      this.pushSignal(runner, {
+        ts_ms: Date.now(),
+        period_start: runner.period_start,
+        side: rec.side,
+        entry: rec.price,
+        message: `FILL ${filledDelta} ${rec.side.toUpperCase()} @ ${rec.price.toFixed(2)} (${rec.matched}/${rec.original})`,
+      });
+    }
+
+    const statusDone = st.status !== "" && st.status.toUpperCase() !== "LIVE";
+    const fullyFilled = rec.original > 0 && rec.matched >= rec.original;
+    if (!statusDone && !fullyFilled) return;
+
+    // Terminal: reconcile committed capital against what actually filled.
+    rec.terminal = true;
+    if (!rec.reconciled) {
+      rec.reconciled = true;
+      const unfilled = Math.max(0, rec.original - rec.matched);
+      const unfilledUsd = unfilled * rec.price;
+      if (unfilledUsd > 0 && this.risk) {
+        this.risk.refund(runnerKey(runner.strategy, runner.asset, runner.tf), unfilledUsd);
+      }
+    }
+    if (runner.open_order_ids) {
+      runner.open_order_ids = runner.open_order_ids.filter((o) => o !== id);
+    }
+  }
+
+  /** Queue a just-ended period's filled position for settlement (markets resolve
+   * minutes later, so the reconciler retries until the outcome is available). */
+  private enqueueSettlement(
+    strategy: LiveStrategyId,
+    asset: Asset,
+    tf: TimeFrame,
+    periodStart: number,
+    position: LivePosition,
+  ): void {
+    if (position.yes_shares + position.no_shares <= 0) return;
+    const dup = this.pending.some(
+      (p) =>
+        p.strategy === strategy &&
+        p.asset === asset &&
+        p.tf === tf &&
+        p.period_start === periodStart,
+    );
+    if (dup) return;
+    this.pending.push({
+      strategy,
+      asset,
+      tf,
+      period_start: periodStart,
+      slug: buildSlugFor(asset, tf, periodStart),
+      position,
+      first_ms: Date.now(),
+    });
+    this.persistPending();
+  }
+
+  /** Try to settle one pending period against the official outcome. */
+  private async trySettle(p: PendingSettlement): Promise<boolean> {
+    const outcome = await fetchSettledOutcome(this.trading.gamma_url, p.slug);
+    if (!outcome) return false;
+
+    const payout = outcome.outcome === "up" ? p.position.yes_shares : p.position.no_shares;
+    const cost = p.position.yes_cost + p.position.no_cost;
+    const realized = payout - cost;
+    this.risk?.recordRealizedPnl(realized);
+
+    const both = p.position.yes_shares > 0 && p.position.no_shares > 0;
+    this.results?.append({
+      ts_ms: Date.now(),
+      strategy: p.strategy,
+      asset: p.asset,
+      tf: p.tf,
+      period_start: p.period_start,
+      slug: p.slug,
+      mode: this.orderMode(),
+      outcome: outcome.outcome,
+      yes_shares: p.position.yes_shares,
+      yes_cost: round2(p.position.yes_cost),
+      no_shares: p.position.no_shares,
+      no_cost: round2(p.position.no_cost),
+      both_filled: both,
+      pnl: round2(realized),
+    });
+
+    const runner = this.runners.get(runnerKey(p.strategy, p.asset, p.tf));
+    if (runner) {
+      this.pushSignal(runner, {
+        ts_ms: Date.now(),
+        period_start: p.period_start,
+        side: "both",
+        entry: 0,
+        message: `SETTLED ${outcome.outcome.toUpperCase()} ${both ? "(arb)" : "(single-leg)"} → ${realized >= 0 ? "+" : ""}$${realized.toFixed(2)}`,
+      });
+    }
+    return true;
+  }
+
+  /**
+   * Retry every queued settlement. Markets resolve a few minutes after the
+   * period ends, so we keep trying for up to 45 min rather than giving up at the
+   * boundary. Driven on an interval by spawnSettlementReconciler.
+   */
+  async settlePending(): Promise<void> {
+    if (!this.pending.length) return;
+    // Generous window so a long connectivity outage still syncs once back online
+    // (markets stay resolved forever; the position is saved in the queue).
+    const EXPIRE_MS = 6 * 60 * 60 * 1000;
+    const keep: PendingSettlement[] = [];
+    for (const p of this.pending) {
+      let settled = false;
+      try {
+        settled = await this.trySettle(p);
+      } catch {
+        settled = false;
+      }
+      if (settled) continue;
+      if (Date.now() - p.first_ms <= EXPIRE_MS) keep.push(p);
+    }
+    if (keep.length !== this.pending.length) {
+      this.pending = keep;
+      this.persistPending();
     }
   }
 
@@ -322,14 +709,14 @@ export class LiveStrategyEngine {
     price: number,
     shares: number,
     signal: LiveSignal,
-  ): Promise<void> {
-    if (!this.executor?.isLive()) return;
+  ): Promise<PlaceOrderResult | null> {
+    if (!this.executor?.isLive()) return null;
 
     const tokenId = side === "yes" ? runner.yes_token_id : runner.no_token_id;
     if (!tokenId) {
       signal.order_error = "token id not resolved";
       signal.message += " (no token)";
-      return;
+      return { ok: false, error: "token id not resolved" };
     }
 
     const result = await this.executor.placeLimitBuy(tokenId, price, shares);
@@ -343,6 +730,7 @@ export class LiveStrategyEngine {
       signal.order_error = result.error ?? "order failed";
       signal.message += ` [order err: ${signal.order_error}]`;
     }
+    return result;
   }
 
   private async emitSignal(
@@ -351,21 +739,70 @@ export class LiveStrategyEngine {
     shares: number,
   ): Promise<void> {
     const signal: LiveSignal = { ...partial };
-    this.pushSignal(runner, signal);
-    if (partial.side === "yes" || partial.side === "no") {
-      if (this.executor?.isLive()) {
-        await this.placeOrder(runner, partial.side, partial.entry, shares, signal);
-      } else {
+
+    if (partial.side !== "yes" && partial.side !== "no") {
+      this.pushSignal(runner, signal);
+      return;
+    }
+
+    const key = runnerKey(runner.strategy, runner.asset, runner.tf);
+    const market = this.marketId(runner);
+    const legCost = partial.entry * shares;
+
+    // Risk gating only blocks live orders (paper never halts — see placeDualOpenOrders).
+    if (this.risk && this.executor?.isLive()) {
+      const decision = this.risk.check(key, market, [legCost]);
+      if (!decision.allowed) {
+        signal.order_error = `risk: ${decision.reason}`;
+        signal.message += ` [BLOCKED — ${decision.reason}]`;
+        this.pushSignal(runner, signal);
         this.recordTrade(runner, partial.side, partial.entry, shares, {
           ok: false,
-          error: "paper mode",
+          error: `risk: ${decision.reason}`,
         });
+        return;
       }
+      this.risk.commit(key, market, legCost);
+    }
+
+    this.pushSignal(runner, signal);
+    if (this.executor?.isLive()) {
+      const result = await this.placeOrder(runner, partial.side, partial.entry, shares, signal);
+      if (result?.ok && result.orderId) {
+        this.registerOrder(runner, result.orderId, partial.side, partial.entry, shares);
+      }
+      if (this.risk && !result?.ok) this.risk.refund(key, legCost);
+    } else {
+      this.recordTrade(runner, partial.side, partial.entry, shares, {
+        ok: false,
+        error: "paper mode",
+      });
     }
   }
 
   private resetPeriod(runner: LiveRunner, periodStart: number): void {
+    // Settle the just-ended period's filled position → realized P&L (stop-loss).
+    const endedPos = this.computePosition(runner);
+    if (endedPos.yes_shares + endedPos.no_shares > 0) {
+      this.enqueueSettlement(
+        runner.strategy,
+        runner.asset,
+        runner.tf,
+        runner.period_start,
+        endedPos,
+      );
+    }
+
+    // Cancel any of the previous period's orders still resting (GTD can linger
+    // up to ~60s past the boundary) before starting the new period.
+    const stale = runner.open_order_ids ?? [];
+    if (stale.length) void this.cancelOrderIds(stale, runner, "period-roll");
+    runner.open_order_ids = [];
+    runner.orders = {};
+    this.risk?.releaseOpen(runnerKey(runner.strategy, runner.asset, runner.tf));
     runner.period_start = periodStart;
+    runner.risk_blocked = false;
+    runner.risk_reason = undefined;
     runner.yes_filled = false;
     runner.no_filled = false;
     runner.dual_orders_placed = false;
@@ -399,11 +836,17 @@ export class LiveStrategyEngine {
     const shares = Number(runner.params.shares ?? 5);
 
     if (runner.strategy === "dual_45c") {
+      if (runner.risk_blocked) {
+        runner.status = `risk-blocked — ${runner.risk_reason ?? "limit reached"}`;
+        return;
+      }
       if (!runner.dual_orders_placed && !runner.dual_orders_placing && runner.yes_token_id && runner.no_token_id) {
         void this.placeDualOpenOrders(runner);
       }
       if (runner.dual_orders_placed) {
-        if (runner.yes_order_id && runner.no_order_id) {
+        if (!this.executor?.isLive()) {
+          this.simulatePaperDualFills(runner, yesAsk, noAsk, limit, shares);
+        } else if (runner.yes_order_id && runner.no_order_id) {
           runner.status = `live — resting UP+DOWN @ ${limit.toFixed(2)} until period end`;
         } else if (runner.yes_order_id || runner.no_order_id) {
           runner.status = "live — partial dual limits posted";
@@ -532,4 +975,28 @@ export function spawnLiveEngineTicker(live: LiveState, engine: LiveStrategyEngin
   setInterval(() => {
     engine.tick(live.frame);
   }, 200);
+}
+
+/** Poll resting orders for fills (independent, slower cadence than the tick). */
+export function spawnFillPoller(engine: LiveStrategyEngine, intervalMs = 3000): void {
+  let busy = false;
+  setInterval(() => {
+    if (busy) return;
+    busy = true;
+    void engine.pollFills().finally(() => {
+      busy = false;
+    });
+  }, intervalMs);
+}
+
+/** Retry pending settlements until Polymarket resolves them (minutes-lagged). */
+export function spawnSettlementReconciler(engine: LiveStrategyEngine, intervalMs = 30_000): void {
+  let busy = false;
+  setInterval(() => {
+    if (busy) return;
+    busy = true;
+    void engine.settlePending().finally(() => {
+      busy = false;
+    });
+  }, intervalMs);
 }

@@ -44,6 +44,20 @@ export function spawnCollectorSubscriber(ipcPath: string, live: LiveState): void
     }
     const socket = net.createConnection(ipcPath);
     let buffer = "";
+    // A failing socket emits BOTH "error" and "close"; without this guard each
+    // would schedule its own reconnect, doubling sockets/timers on every flap
+    // until the process OOMs.
+    let reconnectScheduled = false;
+
+    const scheduleReconnect = () => {
+      if (reconnectScheduled) return;
+      reconnectScheduled = true;
+      live.connected = false;
+      if (live.frame) live.frame.collector_connected = false;
+      socket.removeAllListeners();
+      socket.destroy();
+      setTimeout(connect, 2000);
+    };
 
     socket.on("connect", () => {
       live.connected = true;
@@ -66,17 +80,8 @@ export function spawnCollectorSubscriber(ipcPath: string, live: LiveState): void
       }
     });
 
-    socket.on("close", () => {
-      live.connected = false;
-      if (live.frame) live.frame.collector_connected = false;
-      setTimeout(connect, 2000);
-    });
-    socket.on("error", () => {
-      live.connected = false;
-      if (live.frame) live.frame.collector_connected = false;
-      socket.destroy();
-      setTimeout(connect, 2000);
-    });
+    socket.on("close", scheduleReconnect);
+    socket.on("error", scheduleReconnect);
   };
   connect();
 }
