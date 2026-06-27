@@ -1,10 +1,13 @@
+// Run from whatever folder this file lives in, so the deploy path doesn't matter.
+const cwd = __dirname;
+
 module.exports = {
   apps: [
     {
       name: "polypulse-collector",
       script: "packages/collector/dist/main.js",
       args: "--env .env",
-      cwd: "/root/polymarket-multi-tool-ts",
+      cwd,
       interpreter: "node",
       autorestart: true,
       restart_delay: 3000,
@@ -18,7 +21,7 @@ module.exports = {
       name: "polypulse-dashboard",
       script: "packages/dashboard/dist/main.js",
       args: "--env .env",
-      cwd: "/root/polymarket-multi-tool-ts",
+      cwd,
       interpreter: "node",
       autorestart: true,
       restart_delay: 3000,
