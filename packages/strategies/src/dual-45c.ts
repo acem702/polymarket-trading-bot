@@ -5,6 +5,7 @@ import {
   loadQuotes,
   parseEtDateRange,
 } from "./loader.js";
+import { restingBuyFill } from "./fill-model.js";
 import type { Dual45cParams, DualMarketResult, StrategySummary } from "./types.js";
 
 export function runDual45c(params: Dual45cParams): {
@@ -35,11 +36,15 @@ export function runDual45c(params: Dual45cParams): {
 
     for (const q of quotes) {
       if (q.ts_ms < tMin || q.ts_ms >= tMax) continue;
-      if (yesEntry === null && q.yes_ask > 0 && q.yes_ask <= limitPrice) {
-        yesEntry = q.yes_ask;
+      // Resting BUY fills at the limit (not the cheap observed ask). ask_bid data
+      // is price-only, so no depth check here (paper adds one from book size).
+      if (yesEntry === null) {
+        const f = restingBuyFill(q.yes_ask, limitPrice, shares);
+        if (f.filled) yesEntry = f.price;
       }
-      if (noEntry === null && q.no_ask > 0 && q.no_ask <= limitPrice) {
-        noEntry = q.no_ask;
+      if (noEntry === null) {
+        const f = restingBuyFill(q.no_ask, limitPrice, shares);
+        if (f.filled) noEntry = f.price;
       }
       if (yesEntry !== null && noEntry !== null) break;
     }

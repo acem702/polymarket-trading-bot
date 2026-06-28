@@ -12,6 +12,7 @@ import {
   type TimeFrame,
   type TradingConfig,
 } from "@pmt/shared";
+import { restingBuyFill } from "@pmt/strategies";
 import type { LiveState } from "./api.js";
 import type { ClobExecutor, PlaceOrderResult } from "./clob-executor.js";
 import type { OrderStatus } from "./clob-executor.js";
@@ -490,6 +491,8 @@ export class LiveStrategyEngine {
     runner: LiveRunner,
     yesAsk: number,
     noAsk: number,
+    yesAskSize: number | undefined,
+    noAskSize: number | undefined,
     limit: number,
     shares: number,
   ): void {
@@ -497,32 +500,35 @@ export class LiveStrategyEngine {
     const key = runnerKey(runner.strategy, runner.asset, runner.tf);
     const market = this.marketId(runner);
 
-    const tryFill = (side: "yes" | "no", ask: number): void => {
+    const tryFill = (side: "yes" | "no", ask: number, askSize: number | undefined): void => {
       const id = `paper-${side}-${runner.period_start}`;
       if (runner.orders?.[id]) return; // already filled this period
-      if (!(ask > 0 && ask <= limit)) return;
+      // Resting BUY: fills at our limit (not the cheap ask), and only if the
+      // book has enough size for our shares.
+      const fill = restingBuyFill(ask, limit, shares, askSize);
+      if (!fill.filled) return;
       (runner.orders ??= {})[id] = {
         side,
-        price: ask,
+        price: fill.price,
         original: shares,
         matched: shares,
         status: "FILLED",
         terminal: true,
         reconciled: true,
       };
-      this.risk?.commit(key, market, ask * shares);
-      this.recordTrade(runner, side, ask, shares, { ok: true });
+      this.risk?.commit(key, market, fill.price * shares);
+      this.recordTrade(runner, side, fill.price, shares, { ok: true });
       this.pushSignal(runner, {
         ts_ms: Date.now(),
         period_start: runner.period_start,
         side,
-        entry: ask,
-        message: `PAPER FILL ${side.toUpperCase()} ${shares} @ ${ask.toFixed(2)}`,
+        entry: fill.price,
+        message: `PAPER FILL ${side.toUpperCase()} ${shares} @ ${fill.price.toFixed(2)}`,
       });
     };
 
-    tryFill("yes", yesAsk);
-    tryFill("no", noAsk);
+    tryFill("yes", yesAsk, yesAskSize);
+    tryFill("no", noAsk, noAskSize);
 
     const yf = !!runner.orders?.[`paper-yes-${runner.period_start}`];
     const nf = !!runner.orders?.[`paper-no-${runner.period_start}`];
@@ -834,6 +840,9 @@ export class LiveStrategyEngine {
     const noAsk = frame.no_best_ask[mkey] ?? 0;
     const limit = Number(runner.params.limit_price ?? 0.45);
     const shares = Number(runner.params.shares ?? 5);
+    const book = frame.books?.[mkey];
+    const yesAskSize = book?.yes_asks?.[0] ? Number(book.yes_asks[0].size) : undefined;
+    const noAskSize = book?.no_asks?.[0] ? Number(book.no_asks[0].size) : undefined;
 
     if (runner.strategy === "dual_45c") {
       if (runner.risk_blocked) {
@@ -845,7 +854,7 @@ export class LiveStrategyEngine {
       }
       if (runner.dual_orders_placed) {
         if (!this.executor?.isLive()) {
-          this.simulatePaperDualFills(runner, yesAsk, noAsk, limit, shares);
+          this.simulatePaperDualFills(runner, yesAsk, noAsk, yesAskSize, noAskSize, limit, shares);
         } else if (runner.yes_order_id && runner.no_order_id) {
           runner.status = `live — resting UP+DOWN @ ${limit.toFixed(2)} until period end`;
         } else if (runner.yes_order_id || runner.no_order_id) {
