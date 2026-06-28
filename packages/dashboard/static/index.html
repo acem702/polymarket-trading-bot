@@ -853,9 +853,9 @@
               <div class="strat-stat"><span class="lbl">Mkts</span><span class="val" data-k="markets">—</span></div>
               <div class="strat-stat"><span class="lbl">Trades</span><span class="val" data-k="trades">—</span></div>
               <div class="strat-stat"><span class="lbl">Win%</span><span class="val" data-k="winrate">—</span></div>
+              <div class="strat-stat"><span class="lbl">Exit PnL</span><span class="val" data-k="pnl">—</span></div>
+              <div class="strat-stat"><span class="lbl">Hold PnL</span><span class="val" data-k="hold_pnl">—</span></div>
               <div class="strat-stat"><span class="lbl">Wins</span><span class="val" data-k="wins">—</span></div>
-              <div class="strat-stat"><span class="lbl">Loss</span><span class="val" data-k="losses">—</span></div>
-              <div class="strat-stat"><span class="lbl">PnL</span><span class="val" data-k="pnl">—</span></div>
             </div>
             <div class="strat-results" data-results="dual_45c" hidden></div>
           </div>
@@ -2037,6 +2037,9 @@ function renderStratSummary(strategy, summary) {
   set('wins', String(summary.wins));
   set('losses', String(summary.losses));
   set('pnl', fmtPnl(summary.total_pnl), summary.total_pnl >= 0 ? 'pos' : 'neg');
+  if (summary.hold_pnl !== undefined) {
+    set('hold_pnl', fmtPnl(summary.hold_pnl), summary.hold_pnl >= 0 ? 'pos' : 'neg');
+  }
 }
 
 function renderStratResults(strategy, data) {

@@ -14,6 +14,8 @@ export interface Quote {
   ts_ms: number;
   yes_ask: number;
   no_ask: number;
+  yes_bid: number;
+  no_bid: number;
 }
 
 export interface PriceTick {
@@ -37,6 +39,9 @@ export interface SimParams {
 
 export interface Dual45cParams extends SimParams {
   limitPrice?: number;
+  /** If >0, exit a lone (single-leg) fill at the bid after this many seconds
+   *  instead of holding it to settlement. 0 = hold (original behavior). */
+  exitSecs?: number;
 }
 
 export interface Momentum90cParams extends SimParams {
@@ -66,8 +71,8 @@ export interface DualMarketResult {
   slug: string;
   period_start: number;
   settlement: Direction;
-  yes_fill?: { entry: number; won: boolean; pnl: number };
-  no_fill?: { entry: number; won: boolean; pnl: number };
+  yes_fill?: { entry: number; won: boolean; pnl: number; exited?: boolean };
+  no_fill?: { entry: number; won: boolean; pnl: number; exited?: boolean };
   total_pnl: number;
 }
 
@@ -83,6 +88,9 @@ export interface StrategySummary {
   total_pnl: number;
   avg_pnl: number;
   skipped: number;
+  /** dual_45c only: P&L if lone legs were HELD to settlement (for comparison
+   *  against total_pnl which exits them). */
+  hold_pnl?: number;
   params: Record<string, unknown>;
 }
 

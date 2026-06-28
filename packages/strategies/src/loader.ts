@@ -120,6 +120,8 @@ export function loadQuotes(slugPath: string): Quote[] {
         ts_ms: Number(r.ts_ms),
         yes_ask: Number(r.yes_best_ask ?? 0),
         no_ask: Number(r.no_best_ask ?? 0),
+        yes_bid: Number(r.yes_best_bid ?? 0),
+        no_bid: Number(r.no_best_bid ?? 0),
       });
     } catch {
       // skip
